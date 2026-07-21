@@ -2,11 +2,15 @@
    INVESTMENT API
    ============================================ */
 
-class InvestmentApi extends BaseApiService {
+class InvestmentApi extends ApiService {
   constructor() {
     super();
   }
 
+  // ============================================
+  // INVESTMENT API
+  // ============================================
+  
   async generateInvestmentCode(investmentType, options = {}) {
     return this.request('generateInvestmentCode', { investmentType }, options);
   }
@@ -41,10 +45,6 @@ class InvestmentApi extends BaseApiService {
 
   async updateInvestmentRedeemDate(investmentCode, redeemDate, options = {}) {
     return this.request('updateInvestmentRedeemDate', { investmentCode, redeemDate }, options);
-  }
-
-  async getInvestmentSummary(asOfDate, options = {}) {
-    return this.request('getInvestmentSummary', { asOfDate }, options);
   }
 }
 
