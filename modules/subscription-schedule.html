@@ -1,0 +1,771 @@
+<div class="subscription-report-container">
+  <div class="report-header">
+    <h1>Subscription & License Schedule</h1>
+  </div>
+
+  <!-- Tabs and Controls Row -->
+  <div class="report-controls-row">
+    <!-- Tabs on the left -->
+    <div class="report-tabs">
+      <button class="tab-btn active" onclick="switchSubscriptionTab('allSchedule')">
+        <i class="fas fa-list"></i> All Schedules
+      </button>
+      <button class="tab-btn" onclick="switchSubscriptionTab('prepaid')">
+        <i class="fas fa-credit-card"></i> Prepaid
+      </button>
+      <button class="tab-btn" onclick="switchSubscriptionTab('arrears')">
+        <i class="fas fa-chart-line"></i> In Arrears
+      </button>
+      <button class="tab-btn" onclick="switchSubscriptionTab('expired')">
+        <i class="fas fa-exclamation-triangle"></i> Expired
+      </button>
+    </div>
+
+    <!-- Controls on the right -->
+    <div class="report-controls">
+      <!-- All Schedules Controls -->
+      <div class="control-group" id="allScheduleControls" style="display: flex;">
+        <div class="compact-date-input">
+          <label for="fromDate">From:</label>
+          <input type="date" id="fromDate" onchange="applyDateFilter()">
+        </div>
+        <div class="compact-date-input">
+          <label for="toDate">To:</label>
+          <input type="date" id="toDate" onchange="applyDateFilter()">
+        </div>
+        <button class="print-report-btn" onclick="printSubscriptionSchedule()">
+          <i class="fas fa-print"></i> Print
+        </button>
+      </div>
+
+      <!-- Prepaid Controls -->
+      <div class="control-group" id="prepaidControls" style="display: none;">
+        <div class="compact-date-input">
+          <label for="fromDatePrepaid">From:</label>
+          <input type="date" id="fromDatePrepaid" onchange="applyPrepaidDateFilter()">
+        </div>
+        <div class="compact-date-input">
+          <label for="toDatePrepaid">To:</label>
+          <input type="date" id="toDatePrepaid" onchange="applyPrepaidDateFilter()">
+        </div>
+        <button class="print-report-btn" onclick="printPrepaidReport()">
+          <i class="fas fa-print"></i> Print
+        </button>
+      </div>
+
+      <!-- In Arrears Controls -->
+      <div class="control-group" id="arrearsControls" style="display: none;">
+        <div class="compact-date-input">
+          <label for="fromDateArrears">From:</label>
+          <input type="date" id="fromDateArrears" onchange="applyArrearsDateFilter()">
+        </div>
+        <div class="compact-date-input">
+          <label for="toDateArrears">To:</label>
+          <input type="date" id="toDateArrears" onchange="applyArrearsDateFilter()">
+        </div>
+        <button class="print-report-btn" onclick="printArrearsReport()">
+          <i class="fas fa-print"></i> Print
+        </button>
+      </div>
+
+      <!-- Expired Controls -->
+      <div class="control-group" id="expiredControls" style="display: none;">
+        <button class="print-report-btn" onclick="printExpiredReport()">
+          <i class="fas fa-print"></i> Print
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- All Schedules Tab -->
+  <div class="tab-content active" id="allSchedule">
+    <div class="report-table-wrapper" id="allScheduleWrapper">
+      <!-- Grouped table will be rendered here -->
+    </div>
+  </div>
+
+ <!-- Prepaid Tab -->
+  <div class="tab-content" id="prepaid">
+    <div class="report-table-wrapper">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Subscription Name</th>
+            <th>Start Date</th>
+            <th>Expiry Date</th>
+            <th>Category</th>
+            <th>Annual Cost (GH₵)</th>
+            <th>Monthly Charge (GH₵)</th>
+            <th>Remaining Balance (GH₵)</th>
+          </tr>
+        </thead>
+        <tbody id="prepaidTableBody">
+          <tr><td colspan="8" class="loading-cell">Loading...</td></tr>
+        </tbody>
+        <tfoot id="prepaidTableFooter"></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- In Arrears Tab -->
+  <div class="tab-content" id="arrears">
+    <div class="report-table-wrapper">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Subscription Name</th>
+            <th>Category</th>
+            <th>Start Date</th>
+            <th>Expiry Date</th>
+            <th>Annual Cost (GH₵)</th>
+            <th>Amount Paid (GH₵)</th>
+            <th>Remaining Amount (GH₵)</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="arrearsTableBody">
+          <tr><td colspan="9" class="loading-cell">Loading...</td></tr>
+        </tbody>
+        <tfoot id="arrearsTableFooter"></tfoot>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- Expired Tab -->
+  <div class="tab-content" id="expired">
+    <div class="report-table-wrapper">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Subscription Name</th>
+            <th>Category</th>
+            <th>Vendor</th>
+            <th>Expiry Date</th>
+            <th>Annual Cost (GH₵)</th>
+            <th>Days Overdue</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="expiredTableBody">
+          <tr><td colspan="8" class="loading-cell">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Payment Modal -->
+<div id="paymentModal" class="subscription-modal" style="display: none;">
+  <div class="subscription-modal-content">
+    <div class="subscription-modal-header">
+      <h3>Process Payment</h3>
+      <button class="subscription-modal-close" onclick="closePaymentModal()">&times;</button>
+    </div>
+    <form id="paymentForm" onsubmit="event.preventDefault(); processPayment();">
+      <div class="modal-field">
+        <label>Subscription Code:</label>
+        <input type="text" id="paymentCode" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Subscription Name:</label>
+        <input type="text" id="paymentName" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Vendor:</label>
+        <input type="text" id="paymentVendor" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Payment Frequency:</label>
+        <input type="text" id="paymentFrequency" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Expected Amount (GH₵):</label>
+        <input type="number" id="paymentExpected" step="0.01" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Remaining Amount (GH₵):</label>
+        <input type="number" id="paymentRemaining" step="0.01" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Amount to Pay (GH₵):</label>
+        <input type="number" id="paymentAmount" step="0.01" required>
+      </div>
+      <div class="modal-field">
+        <label>Payment Date:</label>
+        <input type="date" id="paymentDate" required>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn-cancel" onclick="closePaymentModal()">Cancel</button>
+        <button type="submit" class="modal-btn-save">Pay</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Renew Modal -->
+<div id="renewModal" class="subscription-modal" style="display: none;">
+  <div class="subscription-modal-content">
+    <div class="subscription-modal-header">
+      <h3>Renew Subscription</h3>
+      <button class="subscription-modal-close" onclick="closeRenewModal()">&times;</button>
+    </div>
+    <form id="renewForm" onsubmit="event.preventDefault(); processRenewal();">
+      <div class="modal-field">
+        <label>Subscription Code:</label>
+        <input type="text" id="renewCode" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Subscription Name:</label>
+        <input type="text" id="renewName" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Category:</label>
+        <input type="text" id="renewCategory" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Vendor:</label>
+        <input type="text" id="renewVendor">
+      </div>
+      <div class="modal-field">
+        <label>New Expiry Date:</label>
+        <input type="date" id="renewExpiryDate" required>
+      </div>
+      <div class="modal-field">
+        <label>Annual Cost (GH₵):</label>
+        <input type="number" id="renewAnnualCost" step="0.01" required>
+      </div>
+      <div class="modal-field">
+        <label>Payment Mode:</label>
+        <select id="renewPaymentMode">
+          <option value="Prepaid">Prepaid</option>
+          <option value="In Arrears">In Arrears</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn-cancel" onclick="closeRenewModal()">Cancel</button>
+        <button type="submit" class="modal-btn-save">Confirm Renewal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+.subscription-report-container {
+  background: white;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.report-header {
+  text-align: center;
+  margin-bottom: 12px;
+  border-bottom: 2px solid #4361ee;
+  padding-bottom: 8px;
+}
+
+.report-header h1 {
+  color: #2d3748;
+  font-size: 18px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.report-controls-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.report-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 5px 12px;
+  border: none;
+  background: none;
+  color: #6c757d;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tab-btn:hover {
+  color: #4361ee;
+}
+
+.tab-btn.active {
+  color: #4361ee;
+  border-bottom-color: #4361ee;
+}
+
+.report-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.compact-date-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+  padding: 4px 8px;
+  transition: all 0.2s;
+}
+
+.compact-date-input:hover {
+  border-color: #4361ee;
+}
+
+.compact-date-input label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.compact-date-input input[type="date"] {
+  padding: 3px 5px;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: #2d3748;
+  min-width: 110px;
+}
+
+.print-report-btn {
+  background: #4361ee;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.print-report-btn:hover {
+  background: #3a56d4;
+  transform: translateY(-1px);
+}
+
+.tab-content {
+  display: none;
+  animation: fadeIn 0.2s;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.report-table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  font-size: 11px;
+}
+
+.report-table thead {
+  background: #f7fafc;
+}
+
+.report-table th {
+  padding: 8px 6px;
+  text-align: center;
+  font-weight: 600;
+  color: #2d3748;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.report-table th:last-child {
+  border-right: none;
+}
+
+.report-table td {
+  padding: 6px;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  color: #4a5568;
+  font-size: 11px;
+  text-align: center;
+}
+
+.report-table td:last-child {
+  border-right: none;
+}
+
+.report-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.group-header {
+  background: #e2e8f0;
+  font-weight: 700;
+}
+
+.group-header td {
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  color: #1e293b;
+  border-top: 2px solid #cbd5e0;
+  border-bottom: 1px solid #cbd5e0;
+  background: #f1f5f9;
+  text-align: left !important;
+}
+
+.group-total-row {
+  background: #fef3c7;
+  font-weight: 600;
+}
+
+.group-total-row td {
+  padding: 8px 12px;
+  border-top: 1px solid #f59e0b;
+  border-bottom: 1px solid #f59e0b;
+  text-align: right !important;
+}
+
+.grand-total-row {
+  background: #4361ee;
+  color: white;
+  font-weight: 700;
+}
+
+.grand-total-row td {
+  padding: 10px 12px;
+  border-top: 2px solid #2d3748;
+  text-align: right !important;
+}
+
+.total-row {
+  background: #e8f8f3;
+  border-top: 1px solid #06d6a0;
+  border-bottom: 1px solid #06d6a0;
+  font-weight: 600;
+}
+
+.total-row td {
+  padding: 8px 6px !important;
+  color: #118d57;
+  background: #e8f8f3 !important;
+  font-weight: 600;
+  text-align: right !important;
+}
+
+.total-cell {
+  background: #d0f0e6 !important;
+  font-weight: 600;
+  color: #06d6a0 !important;
+}
+
+.loading-cell {
+  text-align: center;
+  color: #a0aec0;
+  font-style: italic;
+  padding: 30px !important;
+}
+
+.text-danger {
+  color: #dc2626 !important;
+  font-weight: 600;
+}
+
+.text-warning {
+  color: #d97706 !important;
+}
+
+/* Action Buttons */
+.pay-btn, .renew-btn {
+  background: #4361ee;
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.pay-btn:hover, .renew-btn:hover {
+  background: #3a56d4;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3);
+}
+
+/* Modal Styles */
+.subscription-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.subscription-modal-content {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  max-width: 450px;
+  width: 90%;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.subscription-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.subscription-modal-header h3 {
+  margin: 0;
+  color: #2d3748;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.subscription-modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #a0aec0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.subscription-modal-close:hover {
+  color: #2d3748;
+}
+
+#paymentForm, #renewForm {
+  padding: 15px;
+}
+
+.modal-field {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-field label {
+  font-size: 9px;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 3px;
+}
+
+.modal-field input,
+.modal-field select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.modal-field input:focus,
+.modal-field select:focus {
+  outline: none;
+  border-color: #4361ee;
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.1);
+}
+
+.modal-field input[readonly] {
+  background: #f7fafc;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.modal-btn-cancel,
+.modal-btn-save {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn-cancel {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+
+.modal-btn-cancel:hover {
+  background: #cbd5e0;
+}
+
+.modal-btn-save {
+  background: linear-gradient(135deg, #4361ee, #7209b7);
+  color: white;
+}
+
+.modal-btn-save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(67, 97, 238, 0.3);
+}
+
+@media print {
+  .report-controls-row,
+  .renew-btn,
+  .pay-btn,
+  .print-report-btn,
+  .tab-btn {
+    display: none !important;
+  }
+  
+  .subscription-report-container {
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+  }
+  
+  .report-table-wrapper {
+    border: 1px solid #ddd;
+  }
+  
+  .report-table th,
+  .report-table td {
+    border: 1px solid #ddd;
+  }
+}
+
+@media (max-width: 768px) {
+  .subscription-report-container {
+    padding: 10px;
+  }
+
+  .report-header h1 {
+    font-size: 16px;
+  }
+
+  .report-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .report-tabs {
+    gap: 3px;
+  }
+
+  .tab-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .report-controls {
+    flex-direction: column;
+    width: 100%;
+    gap: 6px;
+  }
+
+  .control-group {
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+  }
+
+  .compact-date-input {
+    width: 100%;
+  }
+
+  .print-report-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .report-table th,
+  .report-table td {
+    padding: 5px 3px;
+    font-size: 9px;
+  }
+}
+</style>

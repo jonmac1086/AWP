@@ -1,0 +1,391 @@
+<div class="inventory-container">
+  <div class="inventory-header">
+    <h1>Add New Inventory</h1>
+  </div>
+
+  <!-- New Inventory Form -->
+  <form id="newInventoryForm" onsubmit="event.preventDefault(); submitNewInventory();">
+    <!-- First Row: Category, Date, Inventory Code -->
+    <div class="form-row-three">
+      <div class="form-group">
+        <label for="newCategory">Category:</label>
+        <select id="newCategory" onchange="handleNewCategoryChange()">
+          <option value="">Select Category</option>
+          <option value="add-new">+ Add New</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="newDateOfPurchase">Date:</label>
+        <input type="date" id="newDateOfPurchase" required>
+      </div>
+
+      <div class="form-group">
+        <label>Inventory Code:</label>
+        <div class="code-display" id="generatedCodeDisplay">
+          <span class="code-placeholder">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add New Category Fields (Hidden by default) -->
+    <div id="addNewCategoryFields" style="display: none;">
+      <div class="form-row-two">
+        <div class="form-group">
+          <label for="categoryName">Category Name:</label>
+          <input type="text" id="categoryName" placeholder="e.g., Blue Pen">
+        </div>
+        <div class="form-group">
+          <label for="categoryCode">Main Code:</label>
+          <input type="text" id="categoryCode" readonly placeholder="Auto-generated (INVEN01)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="categoryDescription">Description:</label>
+        <textarea id="categoryDescription" placeholder="Category description" rows="2"></textarea>
+      </div>
+    </div>
+
+    <!-- Second Row: Cost, Quantity, Unit Price -->
+    <div class="form-row-three">
+      <div class="form-group">
+        <label for="newTotalCost">Total Cost (GHc):</label>
+        <input type="number" id="newTotalCost" step="0.01" placeholder="0.00" oninput="calculateUnitPrice()">
+      </div>
+      <div class="form-group">
+        <label for="newQuantity">Quantity:</label>
+        <input type="number" id="newQuantity" step="1" placeholder="0" oninput="calculateUnitPrice()">
+      </div>
+      <div class="form-group">
+        <label for="newUnitPrice">Unit Price (GHc):</label>
+        <input type="number" id="newUnitPrice" step="0.01" readonly placeholder="0.00">
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn">
+      <i class="fas fa-plus"></i> Add Inventory
+    </button>
+  </form>
+</div>
+
+<!-- Modal for Messages -->
+<div class="modal" id="messageModal" style="display: none;">
+  <div class="modal-content">
+    <div id="modalMessage"></div>
+    <button class="modal-close-btn" onclick="closeInventoryModal()">Close</button>
+  </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="inventory-loading-modal" id="inventoryLoadingModal" style="display: none;">
+  <div class="loading-modal-content">
+    <div class="loading-spinner"></div>
+    <p>Processing...</p>
+  </div>
+</div>
+
+<style>
+  .inventory-container {
+    background: white;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .inventory-header {
+    text-align: center;
+    margin-bottom: 18px;
+    border-bottom: 2px solid #4361ee;
+    padding-bottom: 10px;
+  }
+
+  .inventory-header h1 {
+    color: #2d3748;
+    font-size: 20px;
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .form-group {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-group label {
+    margin-bottom: 4px;
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 8px 10px;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    transition: all 0.3s;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: #4361ee;
+    box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.1);
+  }
+
+  .form-group input[readonly] {
+    background: #f7fafc;
+    cursor: not-allowed;
+  }
+
+  .form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .form-row-two {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .form-row-three {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  /* Code Display Styles */
+  .code-display {
+    padding: 8px 10px;
+    border: 2px dashed #4361ee;
+    border-radius: 6px;
+    background: #f0f4ff;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: #4361ee;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+  }
+
+  .code-placeholder {
+    color: #a0aec0;
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: normal;
+  }
+
+  #addNewCategoryFields {
+    background: #f7fafc;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 12px;
+  }
+
+  .submit-btn {
+    width: 100%;
+    max-width: 200px;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #4361ee, #7209b7);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 18px auto 0 auto;
+  }
+
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+  }
+
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    max-width: 380px;
+    text-align: center;
+    animation: modalSlideIn 0.3s ease;
+  }
+
+  @keyframes modalSlideIn {
+    from {
+      transform: translateY(-50px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  #modalMessage {
+    margin-bottom: 18px;
+    font-size: 13px;
+    color: #2d3748;
+    line-height: 1.5;
+    min-height: 45px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .modal-close-btn {
+    padding: 9px 24px;
+    background: #4361ee;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s;
+  }
+
+  .modal-close-btn:hover {
+    background: #3a56d4;
+    transform: translateY(-1px);
+  }
+
+  .success-message {
+    color: #06d6a0;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .error-message {
+    color: #ef476f;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  /* Loading Modal Styles */
+  .inventory-loading-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+  }
+
+  .loading-modal-content {
+    background: white;
+    padding: 25px 35px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+
+  .loading-spinner {
+    width: 35px;
+    height: 35px;
+    border: 3px solid #e2e8f0;
+    border-top: 3px solid #4361ee;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 12px auto;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .loading-modal-content p {
+    margin: 0;
+    color: #2d3748;
+    font-size: 13px;
+  }
+
+  @media (max-width: 768px) {
+    .inventory-container {
+      padding: 15px;
+    }
+
+    .inventory-header h1 {
+      font-size: 18px;
+    }
+
+    .form-row-three {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .form-row-two {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .form-group label {
+      font-size: 11px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      font-size: 12px;
+      padding: 7px 8px;
+    }
+
+    .code-display {
+      font-size: 12px;
+      min-height: 32px;
+    }
+
+    .submit-btn {
+      max-width: 100%;
+      padding: 9px 20px;
+      font-size: 13px;
+    }
+
+    .modal-content {
+      max-width: 90%;
+      padding: 20px;
+    }
+
+    #addNewCategoryFields {
+      padding: 10px;
+    }
+  }
+</style>
