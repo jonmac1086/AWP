@@ -1,7 +1,3 @@
-/* ============================================
-   API COMBINED - Maintains all approaches from original api.js
-   ============================================ */
-
 // Create global API instance that combines all APIs
 window.API = new ApiService();
 
