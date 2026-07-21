@@ -244,110 +244,112 @@
         }, 3500);
     }
 
-        // ============================================
-     // UPLOAD FUNCTION - Using google.script.run
-     // ============================================
-     function uploadToTrialBalance(weekEnding, fileData) {
-         if (isLoading) return;
-         
-         showLoadingModal('Uploading Excel to Trial Balance...');
+    // ============================================
+    // UPLOAD FUNCTION - FIXED: Pass data as object
+    // ============================================
+    function uploadToTrialBalance(weekEnding, fileData) {
+        if (isLoading) return;
+        
+        showLoadingModal('Uploading Excel to Trial Balance...');
 
-         // Convert file to base64
-         const reader = new FileReader();
-         reader.onload = function(e) {
-             try {
-                 const base64String = e.target.result.split(',')[1];
-                 
-                 console.log('Uploading file:', fileData.name);
-                 console.log('Base64 length:', base64String.length);
-                 console.log('Week Ending:', weekEnding);
-                 
-                 // Prepare the data object
-                 const uploadData = {
-                     base64: base64String,
-                     filename: fileData.name,
-                     weekEnding: weekEnding
-                 };
-                 
-                 // Use the API service
-                 if (window.DailyLiquidityApi) {
-                     // Using the split API - pass object with all required properties
-                     window.DailyLiquidityApi.uploadExcelToTrialBalance(uploadData)
-                         .then(function(response) {
-                             hideLoadingModal();
-                             console.log('Upload response:', response);
-                             
-                             if (response && response.success) {
-                                 showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
-                                 closeUploadModal();
-                                 showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
-                             } else {
-                                 showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
-                             }
-                         })
-                         .catch(function(error) {
-                             hideLoadingModal();
-                             console.error('Upload error:', error);
-                             showToast('❌ Error uploading: ' + (error.message || error), 'error');
-                         });
-                 } else if (window.API && window.API.uploadExcelToTrialBalance) {
-                     // Using the unified API
-                     window.API.uploadExcelToTrialBalance(uploadData)
-                     .then(function(response) {
-                         hideLoadingModal();
-                         console.log('Upload response:', response);
-                         
-                         if (response && response.success) {
-                             showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
-                             closeUploadModal();
-                             showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
-                         } else {
-                             showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
-                         }
-                     })
-                     .catch(function(error) {
-                         hideLoadingModal();
-                         console.error('Upload error:', error);
-                         showToast('❌ Error uploading: ' + (error.message || error), 'error');
-                     });
-                 } else {
-                     // Fallback to google.script.run
-                     google.script.run
-                         .withSuccessHandler(function(response) {
-                             hideLoadingModal();
-                             console.log('Upload response:', response);
-                             
-                             if (response && response.success) {
-                                 showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
-                                 closeUploadModal();
-                                 showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
-                             } else {
-                                 showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
-                             }
-                         })
-                         .withFailureHandler(function(error) {
-                             hideLoadingModal();
-                             console.error('Upload error:', error);
-                             showToast('❌ Error uploading: ' + (error.message || error), 'error');
-                         })
-                         .uploadExcelToTrialBalance(uploadData.base64, uploadData.filename, uploadData.weekEnding);
-                 }
-                     
-             } catch (err) {
-                 hideLoadingModal();
-                 console.error('File processing error:', err);
-                 showToast('❌ Error processing file: ' + err.message, 'error');
-             }
-         };
-         
-         reader.onerror = function() {
-             hideLoadingModal();
-             showToast('❌ Error reading file', 'error');
-         };
-         
-         reader.readAsDataURL(fileData);
-     }
-
+        // Convert file to base64
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const base64String = e.target.result.split(',')[1];
+                
+                console.log('Uploading file:', fileData.name);
+                console.log('Base64 length:', base64String.length);
+                console.log('Week Ending:', weekEnding);
+                
+                // Prepare the data object with all required properties
+                const uploadData = {
+                    base64: base64String,
+                    filename: fileData.name,
+                    weekEnding: weekEnding
+                };
+                
+                // Use the API service
+                if (window.DailyLiquidityApi) {
+                    // Using the split API - pass object with all required properties
+                    console.log('Using DailyLiquidityApi');
+                    window.DailyLiquidityApi.uploadExcelToTrialBalance(uploadData)
+                        .then(function(response) {
+                            hideLoadingModal();
+                            console.log('Upload response:', response);
+                            
+                            if (response && response.success) {
+                                showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
+                                closeUploadModal();
+                                showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
+                            } else {
+                                showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
+                            }
+                        })
+                        .catch(function(error) {
+                            hideLoadingModal();
+                            console.error('Upload error:', error);
+                            showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                        });
+                } else if (window.API && window.API.uploadExcelToTrialBalance) {
+                    // Using the unified API
+                    console.log('Using window.API');
+                    window.API.uploadExcelToTrialBalance(uploadData)
+                    .then(function(response) {
+                        hideLoadingModal();
+                        console.log('Upload response:', response);
+                        
+                        if (response && response.success) {
+                            showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
+                            closeUploadModal();
+                            showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
+                        } else {
+                            showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
+                        }
+                    })
+                    .catch(function(error) {
+                        hideLoadingModal();
+                        console.error('Upload error:', error);
+                        showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                    });
+                } else {
+                    // Fallback to google.script.run
+                    console.log('Using google.script.run');
+                    google.script.run
+                        .withSuccessHandler(function(response) {
+                            hideLoadingModal();
+                            console.log('Upload response:', response);
+                            
+                            if (response && response.success) {
+                                showToast('✅ Excel uploaded and imported to Trial Balance successfully!', 'success');
+                                closeUploadModal();
+                                showToast('Rows imported: ' + (response.rowsImported || 0), 'info');
+                            } else {
+                                showToast('❌ Error uploading: ' + (response?.error || 'Unknown error'), 'error');
+                            }
+                        })
+                        .withFailureHandler(function(error) {
+                            hideLoadingModal();
+                            console.error('Upload error:', error);
+                            showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                        })
+                        .uploadExcelToTrialBalance(uploadData);
+                }
+                    
+            } catch (err) {
+                hideLoadingModal();
+                console.error('File processing error:', err);
+                showToast('❌ Error processing file: ' + err.message, 'error');
+            }
+        };
+        
+        reader.onerror = function() {
+            hideLoadingModal();
+            showToast('❌ Error reading file', 'error');
+        };
+        
+        reader.readAsDataURL(fileData);
+    }
 
     // ---------- UPLOAD MODAL ----------
     function setupUploadModal() {
