@@ -2,11 +2,15 @@
    FIXED ASSETS API
    ============================================ */
 
-class AssetApi extends BaseApiService {
+class AssetApi extends ApiService {
   constructor() {
     super();
   }
 
+  // ============================================
+  // FIXED ASSETS API
+  // ============================================
+  
   async generateAssetCode(assetType, options = {}) {
     return this.request('generateAssetCode', { assetType }, options);
   }
@@ -31,14 +35,6 @@ class AssetApi extends BaseApiService {
   async getFixedAssetsSummaryReport(toDate, options = {}) {
     this.log('getFixedAssetsSummaryReport called for date:', toDate);
     return this.request('getFixedAssetsSummaryReport', { toDate }, options);
-  }
-
-  async getAssetByCode(assetCode, options = {}) {
-    return this.request('getAssetByCode', { assetCode }, options);
-  }
-
-  async disposeAsset(assetCode, disposalDate, disposalValue, options = {}) {
-    return this.request('disposeAsset', { assetCode, disposalDate, disposalValue }, options);
   }
 }
 
