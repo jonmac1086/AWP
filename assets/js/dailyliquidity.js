@@ -245,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using google.script.run (Same as working code)
+    // UPLOAD FUNCTION - Force google.script.run (bypass API wrapper)
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -262,7 +262,8 @@
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Use google.script.run directly (same as your working code)
+                // FORCE USE google.script.run - bypass API wrapper completely
+                // This avoids JSONP URL length limits
                 google.script.run
                     .withSuccessHandler(function(response) {
                         hideLoadingModal();
@@ -270,7 +271,7 @@
                         
                         // Check if response is a string or object
                         if (typeof response === 'string') {
-                            // If it's a string message (like your working code)
+                            // If it's a string message
                             showToast('✅ ' + response, 'success');
                             closeUploadModal();
                         } else if (response && response.success) {
@@ -456,7 +457,7 @@
                 statusMessage.textContent = 'Uploading to Trial Balance...';
                 confirmBtn.disabled = true;
 
-                // Upload to Trial Balance
+                // Upload to Trial Balance using google.script.run
                 uploadToTrialBalance(weekEnding, selectedFile);
             });
         }
