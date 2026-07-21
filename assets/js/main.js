@@ -34,12 +34,17 @@ window.google = {
       
       // Add dynamic methods for all API actions
       const actions = [
+        // User
         'getUserInfo',
+        
+        // Payment Voucher
         'processForm',
         'getNextPVNumber',
         'getPVNumbersByType',
         'getVoucherByNumber',
         'updateVoucher',
+        
+        // Inventory
         'generateInventoryCategoryCode',
         'getInventoryCategories',
         'addNewInventory',
@@ -48,14 +53,47 @@ window.google = {
         'getInventoryListData',
         'recordInventoryUsage',
         'removeInventory',
+        
+        // Assets
         'generateAssetCode',
         'addNewAsset',
         'getDetailedRegister',
         'updateAssetStatus',
+        'updateAllAccumulatedDepreciation',
+        'getFixedAssetsSummaryReport',
+        
+        // Investments
         'generateInvestmentCode',
         'addNewInvestment',
         'getInvestmentsByDateRange',
         'getMaturedInvestments',
+        'getUniqueInvestmentTypes',
+        'getUniqueBanks',
+        'getAllInvestments',
+        'getInvestmentByCode',
+        'updateInvestmentRedeemDate',
+        
+        // Subscriptions
+        'getSubscriptionCategories',
+        'generateSubscriptionCategoryCode',
+        'getNextSubscriptionCode',
+        'addSubscription',
+        'getAllSubscriptions',
+        'updateSubscription',
+        'deleteSubscription',
+        'getSubscriptionsByDateRange',
+        'getExpiredSubscriptions',
+        'renewSubscription',
+        
+        // Daily Liquidity
+        'uploadExcelToTrialBalance',
+        'importLiquidityFromTrialBalance',
+        'saveLiquidityData',
+        'loadLiquidityData',
+        'getAvailableWeekEndings',
+        'deleteLiquidityData',
+        
+        // HTML Module Loaders
         'getPVFormHTML',
         'getAddInventoryHTML',
         'getInventoryReportHTML',
@@ -70,48 +108,66 @@ window.google = {
           // Map the action to API methods
           const actionMap = {
             // User
-            'getUserInfo': () => API.getUserInfo(),
+            'getUserInfo': () => {
+              // Return a mock user since we removed user functions
+              return Promise.resolve({ name: 'User', email: 'user@example.com' });
+            },
             
             // Payment Voucher
-            'processForm': () => API.processForm(args[0]),
-            'getNextPVNumber': () => API.getNextPVNumber(args[0]),
-            'getPVNumbersByType': () => API.getPVNumbersByType(),
-            'getVoucherByNumber': () => API.getVoucherByNumber(args[0], args[1]),
-            'updateVoucher': () => API.updateVoucher(args[0]),
+            'processForm': () => window.API.processForm(args[0]),
+            'getNextPVNumber': () => window.API.getNextPVNumber(args[0]),
+            'getPVNumbersByType': () => window.API.getPVNumbersByType(),
+            'getVoucherByNumber': () => window.API.getVoucherByNumber(args[0], args[1]),
+            'updateVoucher': () => window.API.updateVoucher(args[0]),
             
             // Inventory
-            'generateInventoryCategoryCode': () => API.generateInventoryCategoryCode(),
-            'getInventoryCategories': () => API.getInventoryCategories(),
-            'addNewInventory': () => API.addNewInventory(args[0]),
-            'getPurchaseReportData': () => API.getPurchaseReportData(args[0], args[1]),
-            'getUsageReportData': () => API.getUsageReportData(args[0], args[1]),
-            'getInventoryListData': () => API.getInventoryListData(),
-            'recordInventoryUsage': () => API.recordInventoryUsage(args[0]),
-            'removeInventory': () => API.removeInventory(args[0]),
+            'generateInventoryCategoryCode': () => window.API.generateInventoryCategoryCode(),
+            'getInventoryCategories': () => window.API.getInventoryCategories(),
+            'addNewInventory': () => window.API.addNewInventory(args[0]),
+            'getPurchaseReportData': () => window.API.getPurchaseReportData(args[0], args[1]),
+            'getUsageReportData': () => window.API.getUsageReportData(args[0], args[1]),
+            'getInventoryListData': () => window.API.getInventoryListData(),
+            'recordInventoryUsage': () => window.API.recordInventoryUsage(args[0]),
+            'removeInventory': () => window.API.removeInventory(args[0]),
             
             // Fixed Assets
-            'generateAssetCode': () => API.generateAssetCode(args[0]),
-            'addNewAsset': () => API.addNewAsset(args[0]),
-            'getDetailedRegister': () => API.getDetailedRegister(),
-            'updateAssetStatus': () => API.updateAssetStatus(args[0], args[1]),
+            'generateAssetCode': () => window.API.generateAssetCode(args[0]),
+            'addNewAsset': () => window.API.addNewAsset(args[0]),
+            'getDetailedRegister': () => window.API.getDetailedRegister(),
+            'updateAssetStatus': () => window.API.updateAssetStatus(args[0], args[1]),
+            'updateAllAccumulatedDepreciation': () => window.API.updateAllAccumulatedDepreciation(args[0]),
+            'getFixedAssetsSummaryReport': () => window.API.getFixedAssetsSummaryReport(args[0]),
             
             // Investment
-            'generateInvestmentCode': () => API.generateInvestmentCode(args[0]),
-            'addNewInvestment': () => API.addNewInvestment(args[0]),
-            'getInvestmentsByDateRange': () => API.getInvestmentsByDateRange(args[0], args[1]),
-            'getMaturedInvestments': () => API.getMaturedInvestments(args[0]),
+            'generateInvestmentCode': () => window.API.generateInvestmentCode(args[0]),
+            'addNewInvestment': () => window.API.addNewInvestment(args[0]),
+            'getInvestmentsByDateRange': () => window.API.getInvestmentsByDateRange(args[0], args[1]),
+            'getMaturedInvestments': () => window.API.getMaturedInvestments(args[0]),
+            'getUniqueInvestmentTypes': () => window.API.getUniqueInvestmentTypes(),
+            'getUniqueBanks': () => window.API.getUniqueBanks(),
+            'getAllInvestments': () => window.API.getAllInvestments(),
+            'getInvestmentByCode': () => window.API.getInvestmentByCode(args[0]),
+            'updateInvestmentRedeemDate': () => window.API.updateInvestmentRedeemDate(args[0], args[1]),
             
             // Subscription
-            'getSubscriptionCategories': () => API.getSubscriptionCategories(),
-            'generateSubscriptionCategoryCode': () => API.generateSubscriptionCategoryCode(),
-            'getNextSubscriptionCode': () => API.getNextSubscriptionCode(args[0]),
-            'addSubscription': () => API.addSubscription(args[0]),
-            'getAllSubscriptions': () => API.getAllSubscriptions(),
-            'updateSubscription': () => API.updateSubscription(args[0]),
-            'deleteSubscription': () => API.deleteSubscription(args[0]),
-            'getSubscriptionsByDateRange': () => API.getSubscriptionsByDateRange(args[0], args[1]),
-            'getExpiredSubscriptions': () => API.getExpiredSubscriptions(args[0]),
-            'renewSubscription': () => API.renewSubscription(args[0], args[1], args[2]),
+            'getSubscriptionCategories': () => window.API.getSubscriptionCategories(),
+            'generateSubscriptionCategoryCode': () => window.API.generateSubscriptionCategoryCode(),
+            'getNextSubscriptionCode': () => window.API.getNextSubscriptionCode(args[0]),
+            'addSubscription': () => window.API.addSubscription(args[0]),
+            'getAllSubscriptions': () => window.API.getAllSubscriptions(),
+            'updateSubscription': () => window.API.updateSubscription(args[0]),
+            'deleteSubscription': () => window.API.deleteSubscription(args[0]),
+            'getSubscriptionsByDateRange': () => window.API.getSubscriptionsByDateRange(args[0], args[1]),
+            'getExpiredSubscriptions': () => window.API.getExpiredSubscriptions(args[0]),
+            'renewSubscription': () => window.API.renewSubscription(args[0], args[1], args[2]),
+            
+            // Daily Liquidity
+            'uploadExcelToTrialBalance': () => window.API.uploadExcelToTrialBalance(args[0]),
+            'importLiquidityFromTrialBalance': () => window.API.importLiquidityFromTrialBalance(args[0]),
+            'saveLiquidityData': () => window.API.saveLiquidityData(args[0]),
+            'loadLiquidityData': () => window.API.loadLiquidityData(args[0]),
+            'getAvailableWeekEndings': () => window.API.getAvailableWeekEndings(),
+            'deleteLiquidityData': () => window.API.deleteLiquidityData(args[0]),
              
             // HTML Module Loaders
             'getPVFormHTML': () => loadModuleFile('paymentVoucher'),
@@ -185,7 +241,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-  loadUserInfo();
   setupEventListeners();
   setupSidebarToggleOnResize();
   
@@ -227,28 +282,6 @@ function setupSidebarToggleOnResize() {
       document.getElementById('sidebar').classList.remove('show-mobile');
     }
   });
-}
-
-// ============================================
-// USER INFORMATION
-// ============================================
-
-function loadUserInfo() {
-  const userNameEl = document.getElementById('userName');
-  if (userNameEl) {
-    userNameEl.textContent = 'Loading...';
-  }
-  
-  google.script.run
-    .withSuccessHandler(function(user) {
-      currentUser = user;
-      document.getElementById('userName').textContent = user.name || 'User';
-    })
-    .withFailureHandler(function(error) {
-      console.error('Error loading user:', error);
-      document.getElementById('userName').textContent = 'Guest';
-    })
-    .getUserInfo();
 }
 
 // ============================================
@@ -473,24 +506,10 @@ function initDailyLiquidityModule() {
 }
 
 // ============================================
-// USER FUNCTIONS
+// USER FUNCTIONS (REMOVED - using mock data)
 // ============================================
 
-function showProfile() {
-  alert('Profile feature coming soon');
-}
-
-function showSettings() {
-  alert('Settings feature coming soon');
-}
-
-function logout() {
-  if (confirm('Are you sure you want to logout?')) {
-    currentUser = null;
-    alert('Logged out successfully');
-    window.location.reload();
-  }
-}
+// REMOVED: loadUserInfo, showProfile, showSettings, logout
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -520,6 +539,15 @@ function getStartOfYear() {
   return formatDateForInput(startOfYear);
 }
 
+function formatDateForInput(date) {
+  if (!date) return '';
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ============================================
 // EXPORT FOR MODULES
 // ============================================
@@ -529,9 +557,6 @@ window.loadModule = loadModule;
 window.toggleSidebar = toggleSidebar;
 window.toggleUserMenu = toggleUserMenu;
 window.toggleSubmenu = toggleSubmenu;
-window.showProfile = showProfile;
-window.showSettings = showSettings;
-window.logout = logout;
 window.initPVModule = initPVModule;
 window.initInventoryModule = initInventoryModule;
 window.initInventoryReportModule = initInventoryReportModule;
