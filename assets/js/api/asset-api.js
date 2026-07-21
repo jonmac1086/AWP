@@ -1,5 +1,5 @@
 /* ============================================
-   FIXED ASSETS API
+   FIXED ASSETS API 
    ============================================ */
 
 class AssetApi extends ApiService {
