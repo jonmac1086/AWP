@@ -1,0 +1,820 @@
+/* ============================================
+   ASSET REGISTER MODULE JAVASCRIPT
+   With Grouping Functionality
+   ============================================ */
+
+// Global variables
+let assetPortalOpen = false;
+let allDetailedAssets = [];
+let currentAsOfDate = null;
+let summaryFromDate = null;
+let summaryToDate = null;
+let currentGroupBy = 'full'; // Options: 'full', 'type', 'fittings', 'software', 'computers', 'furniture', 'office', 'motor'
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+function initAssetRegisterModule() {
+  console.log('Initializing Asset Register Module');
+  
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Set initial date values
+  const detailedToDate = document.getElementById('detailedToDate');
+  const summaryToDateEl = document.getElementById('summaryToDate');
+  
+  if (detailedToDate) detailedToDate.value = today;
+  if (summaryToDateEl) summaryToDateEl.value = today;
+  
+  currentAsOfDate = today;
+  summaryToDate = today;
+  
+  // Initialize group by dropdown
+  initGroupByDropdown();
+  
+  // First update accumulated depreciation
+  showAssetRegisterLoadingModal('Initializing asset register...');
+  
+  callGAS('updateAllAccumulatedDepreciation', { asOfDate: today })
+    .then(() => {
+      hideAssetRegisterLoadingModal();
+      return loadDetailedRegister();
+    })
+    .catch(error => {
+      console.error('Initialization error:', error);
+      hideAssetRegisterLoadingModal();
+      loadDetailedRegister(); // Still try to load even if update fails
+    });
+  
+  // Close dropdown when clicking outside
+  window.addEventListener('click', function(event) {
+    if (assetPortalOpen) {
+      const portal = document.getElementById('assetActionPortal');
+      if (portal && !portal.contains(event.target) && !event.target.classList.contains('action-btn')) {
+        closeAssetActionDropdown();
+      }
+    }
+  });
+}
+
+// ============================================
+// GROUP BY FUNCTIONALITY
+// ============================================
+
+function initGroupByDropdown() {
+  const groupBySelect = document.getElementById('groupBySelect');
+  if (!groupBySelect) return;
+  
+  groupBySelect.innerHTML = `
+    <option value="full">Full List (All Assets)</option>
+    <option value="type">Group by Type</option>
+    <option value="fittings">Fittings Only</option>
+    <option value="software">Software Only</option>
+    <option value="computers">Computers & Accessories Only</option>
+    <option value="furniture">Furniture and Fixtures Only</option>
+    <option value="office">Office Equipment Only</option>
+    <option value="motor">Motor Vehicle Only</option>
+  `;
+  
+  groupBySelect.value = currentGroupBy;
+  
+  groupBySelect.addEventListener('change', function(e) {
+    currentGroupBy = e.target.value;
+    applyGrouping();
+  });
+}
+
+function applyGrouping() {
+  if (!allDetailedAssets || allDetailedAssets.length === 0) {
+    return;
+  }
+  
+  switch(currentGroupBy) {
+    case 'full':
+      renderDetailedRegisterTable(allDetailedAssets);
+      break;
+    case 'type':
+      renderGroupedByType(allDetailedAssets);
+      break;
+    case 'fittings':
+      filterAndRenderByType(allDetailedAssets, 'Fittings');
+      break;
+    case 'software':
+      filterAndRenderByType(allDetailedAssets, 'Software');
+      break;
+    case 'computers':
+      filterAndRenderByType(allDetailedAssets, 'Computers & Accessories');
+      break;
+    case 'furniture':
+      filterAndRenderByType(allDetailedAssets, 'Furniture and Fixtures');
+      break;
+    case 'office':
+      filterAndRenderByType(allDetailedAssets, 'Office Equipment');
+      break;
+    case 'motor':
+      filterAndRenderByType(allDetailedAssets, 'Motor Vehicle');
+      break;
+    default:
+      renderDetailedRegisterTable(allDetailedAssets);
+  }
+}
+
+function filterAndRenderByType(assets, assetType) {
+  const filtered = assets.filter(asset => asset.type === assetType);
+  
+  if (filtered.length === 0) {
+    showAssetRegisterEmptyState('detailedRegisterBody', `No ${assetType} assets found`, 11);
+    return;
+  }
+  
+  // Add type header
+  const headerHtml = `
+    <tr class="group-header">
+      <td colspan="11">
+        <strong>${assetType}</strong> (${filtered.length} assets)
+      </td>
+    </tr>
+  `;
+  
+  const rowsHtml = renderAssetRows(filtered);
+  document.getElementById('detailedRegisterBody').innerHTML = headerHtml + rowsHtml;
+}
+
+function renderGroupedByType(assets) {
+  // Group assets by type
+  const grouped = {};
+  assets.forEach(asset => {
+    if (!grouped[asset.type]) {
+      grouped[asset.type] = [];
+    }
+    grouped[asset.type].push(asset);
+  });
+  
+  // Define the order of asset types
+  const typeOrder = [
+    'Computers & Accessories',
+    'Furniture and Fixtures',
+    'Fittings',
+    'Office Equipment',
+    'Motor Vehicle',
+    'Software'
+  ];
+  
+  let allHtml = '';
+  
+  // Render each group
+  typeOrder.forEach(type => {
+    if (grouped[type] && grouped[type].length > 0) {
+      // Group header
+      allHtml += `
+        <tr class="group-header">
+          <td colspan="11">
+            <strong>${type}</strong> (${grouped[type].length} assets)
+          </td>
+        </tr>
+      `;
+      
+      // Group rows
+      allHtml += renderAssetRows(grouped[type]);
+      
+      // Add subtotal row for the group
+      const groupTotal = calculateGroupTotal(grouped[type]);
+      allHtml += `
+        <tr class="group-subtotal">
+          <td colspan="5" style="text-align: right; font-weight: 700;">Subtotal:</td>
+          <td class="amount-cell"><strong>${formatCurrency(groupTotal.totalCost)}</strong></td>
+          <td class="amount-cell"><strong>${formatCurrency(groupTotal.totalAnnualCharge)}</strong></td>
+          <td class="amount-cell"><strong>${formatCurrency(groupTotal.totalMonthlyDep)}</strong></td>
+          <td class="amount-cell"><strong>${formatCurrency(groupTotal.totalAccDep)}</strong></td>
+          <td class="amount-cell"><strong>${formatCurrency(groupTotal.totalNBV)}</strong></td>
+          <td></td>
+        </tr>
+      `;
+    }
+  });
+  
+  // Add grand total row
+  const grandTotal = calculateGrandTotal(assets);
+  allHtml += `
+    <tr class="grand-total-row">
+      <td colspan="5" style="text-align: right; font-weight: 700;">GRAND TOTAL:</td>
+      <td class="amount-cell"><strong>${formatCurrency(grandTotal.totalCost)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(grandTotal.totalAnnualCharge)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(grandTotal.totalMonthlyDep)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(grandTotal.totalAccDep)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(grandTotal.totalNBV)}</strong></td>
+      <td></td>
+    </tr>
+  `;
+  
+  document.getElementById('detailedRegisterBody').innerHTML = allHtml;
+}
+
+function renderAssetRows(assets) {
+  return assets.map(asset => {
+    const monthlyDep = parseFloat(asset.annualCharge) / 12;
+    
+    return `
+      <tr>
+        <td>${escapeHtml(asset.name || '')}</td>
+        <td>${escapeHtml(asset.type || '')}</td>
+        <td>${escapeHtml(asset.code || '')}</td>
+        <td>${escapeHtml(asset.location || '')}</td>
+        <td>${asset.purchaseDate || ''}</td>
+        <td class="amount-cell">${formatCurrency(asset.cost)}</td>
+        <td class="amount-cell">${formatCurrency(asset.annualCharge)}</td>
+        <td class="amount-cell">${formatCurrency(monthlyDep)}</td>
+        <td class="amount-cell">${formatCurrency(asset.accumulatedDepreciation)}</td>
+        <td class="amount-cell">${formatCurrency(asset.netBookValue)}</td>
+        <td>
+          <button class="action-btn" onclick="openAssetActionDropdown(event, '${escapeHtml(asset.name)}')">
+            <i class="fas fa-ellipsis-v"></i> Action
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function calculateGroupTotal(assets) {
+  let totalCost = 0;
+  let totalAnnualCharge = 0;
+  let totalMonthlyDep = 0;
+  let totalAccDep = 0;
+  let totalNBV = 0;
+  
+  assets.forEach(asset => {
+    totalCost += parseFloat(asset.cost) || 0;
+    totalAnnualCharge += parseFloat(asset.annualCharge) || 0;
+    totalMonthlyDep += (parseFloat(asset.annualCharge) / 12) || 0;
+    totalAccDep += parseFloat(asset.accumulatedDepreciation) || 0;
+    totalNBV += parseFloat(asset.netBookValue) || 0;
+  });
+  
+  return {
+    totalCost,
+    totalAnnualCharge,
+    totalMonthlyDep,
+    totalAccDep,
+    totalNBV
+  };
+}
+
+function calculateGrandTotal(assets) {
+  return calculateGroupTotal(assets);
+}
+
+// ============================================
+// DETAILED REGISTER
+// ============================================
+
+function switchAssetRegisterTab(tabName) {
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  document.getElementById(tabName).classList.add('active');
+  event.target.closest('.tab-btn').classList.add('active');
+
+  const detailedDateControl = document.getElementById('detailedDateControl');
+  const summaryDateControl = document.getElementById('summaryDateControl');
+  const groupByControl = document.getElementById('groupByControl');
+
+  if (tabName === 'detailedRegister') {
+    if (detailedDateControl) detailedDateControl.style.display = 'flex';
+    if (summaryDateControl) summaryDateControl.style.display = 'none';
+    if (groupByControl) groupByControl.style.display = 'flex';
+    loadDetailedRegister();
+  } else if (tabName === 'summaryRegister') {
+    if (detailedDateControl) detailedDateControl.style.display = 'none';
+    if (summaryDateControl) summaryDateControl.style.display = 'flex';
+    if (groupByControl) groupByControl.style.display = 'none';
+    loadSummaryRegister();
+  }
+}
+
+function loadDetailedRegister() {
+  showAssetRegisterLoadingSpinner('detailedRegisterBody');
+  
+  callGAS('getDetailedRegister', {})
+    .then(response => {
+      if (response && !response.error) {
+        allDetailedAssets = response;
+        applyGrouping(); // Apply current grouping
+      } else {
+        showAssetRegisterEmptyState('detailedRegisterBody', 'Error loading asset register', 11);
+      }
+    })
+    .catch(error => {
+      console.error('Error loading detailed register:', error);
+      showAssetRegisterEmptyState('detailedRegisterBody', 'Error loading asset register', 11);
+    });
+}
+
+function recalculateAssetValues() {
+  const asOfDateInput = document.getElementById('detailedToDate').value;
+  if (!asOfDateInput) {
+    applyGrouping();
+    return;
+  }
+  
+  currentAsOfDate = asOfDateInput;
+  
+  showAssetRegisterLoadingModal('Recalculating accumulated depreciation as at ' + formatDateForDisplay(new Date(currentAsOfDate)) + '...');
+  
+  callGAS('updateAllAccumulatedDepreciation', { 
+    asOfDate: currentAsOfDate 
+  })
+  .then(response => {
+    hideAssetRegisterLoadingModal();
+    if (response && !response.error) {
+      return callGAS('getDetailedRegister', {});
+    } else {
+      throw new Error(response?.error || 'Failed to update');
+    }
+  })
+  .then(response => {
+    if (response && !response.error) {
+      allDetailedAssets = response;
+      applyGrouping();
+      showAssetMessage('✓ Accumulated depreciation updated as at ' + formatDateForDisplay(new Date(currentAsOfDate)), 'success');
+      setTimeout(() => closeAssetModal(), 1500);
+    }
+  })
+  .catch(error => {
+    hideAssetRegisterLoadingModal();
+    console.error('Error:', error);
+    showAssetMessage('Error updating depreciation: ' + (error.message || error), 'error');
+    applyGrouping();
+  });
+}
+
+function renderDetailedRegisterTable(data) {
+  const tbody = document.getElementById('detailedRegisterBody');
+  if (!tbody) return;
+
+  if (!data || data.length === 0) {
+    showAssetRegisterEmptyState('detailedRegisterBody', 'No assets found', 11);
+    return;
+  }
+
+  const rows = renderAssetRows(data);
+  
+  // Add total row
+  const total = calculateGrandTotal(data);
+  const totalRow = `
+    <tr class="total-row">
+      <td colspan="5" style="text-align: right; font-weight: 700;">TOTAL:</td>
+      <td class="amount-cell"><strong>${formatCurrency(total.totalCost)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(total.totalAnnualCharge)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(total.totalMonthlyDep)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(total.totalAccDep)}</strong></td>
+      <td class="amount-cell"><strong>${formatCurrency(total.totalNBV)}</strong></td>
+      <td></td>
+    </tr>
+  `;
+  
+  tbody.innerHTML = rows + totalRow;
+}
+
+// ============================================
+// SUMMARY REGISTER
+// ============================================
+
+function loadSummaryRegister() {
+  showAssetRegisterLoadingSpinner('summaryDetailsBody');
+  
+  const toDateInput = document.getElementById('summaryToDate');
+  if (!toDateInput || !toDateInput.value) {
+    showAssetRegisterEmptyState('summaryDetailsBody', 'Please select a TO date', 9);
+    return;
+  }
+
+  const toDate = toDateInput.value;
+  summaryToDate = toDate;
+
+  callGAS('getFixedAssetsSummaryReport', { toDate: toDate })
+    .then(response => {
+      if (response && !response.error && response.summaryByType) {
+        renderSummaryRegisterFromReport(response);
+      } else {
+        console.error('Invalid response:', response);
+        showAssetRegisterEmptyState('summaryDetailsBody', 'Error loading summary register: ' + (response?.error || 'Unknown error'), 9);
+      }
+    })
+    .catch(error => {
+      console.error('Error loading summary register:', error);
+      showAssetRegisterEmptyState('summaryDetailsBody', 'Error loading summary register: ' + (error.message || error), 9);
+    });
+}
+
+function recalculateSummaryRegister() {
+  const toDateInput = document.getElementById('summaryToDate');
+  
+  if (!toDateInput || !toDateInput.value) {
+    showAssetRegisterEmptyState('summaryDetailsBody', 'Please select a TO date', 9);
+    return;
+  }
+
+  const toDate = toDateInput.value;
+  summaryToDate = toDate;
+  
+  showAssetRegisterLoadingModal('Calculating summary register as at ' + formatDateForDisplay(new Date(toDate)) + '...');
+  
+  callGAS('updateAllAccumulatedDepreciation', { asOfDate: toDate })
+    .then(response => {
+      if (response && !response.error) {
+        return callGAS('getFixedAssetsSummaryReport', { toDate: toDate });
+      } else {
+        throw new Error(response?.error || 'Failed to update depreciation');
+      }
+    })
+    .then(response => {
+      hideAssetRegisterLoadingModal();
+      if (response && !response.error && response.summaryByType) {
+        renderSummaryRegisterFromReport(response);
+        showAssetMessage('✓ Summary Register calculated as at ' + formatDateForDisplay(new Date(toDate)), 'success');
+        setTimeout(() => closeAssetModal(), 1500);
+      } else {
+        throw new Error(response?.error || 'Failed to generate report');
+      }
+    })
+    .catch(error => {
+      hideAssetRegisterLoadingModal();
+      console.error('Error:', error);
+      showAssetMessage('Error: ' + (error.message || error), 'error');
+      showAssetRegisterEmptyState('summaryDetailsBody', 'Error: ' + (error.message || error), 9);
+    });
+}
+
+function renderSummaryRegisterFromReport(report) {
+  const tbody = document.getElementById('summaryDetailsBody');
+  if (!tbody) {
+    console.error('summaryDetailsBody not found');
+    return;
+  }
+
+  if (!report.summaryByType || Object.keys(report.summaryByType).length === 0) {
+    showAssetRegisterEmptyState('summaryDetailsBody', 'No assets found for the selected period', 9);
+    return;
+  }
+
+  const summaryByType = report.summaryByType;
+  const total = report.totalSummary;
+  
+  const assetTypes = [
+    'Computers & Accessories',
+    'Furniture and Fixtures',
+    'Fittings',
+    'Office Equipment',
+    'Motor Vehicle',
+    'Software'
+  ];
+
+  let html = '';
+
+  // COST SECTION
+  html += `<tr>
+    <td class="details-col">Cost As At</td>
+    <td class="date-col">${report.yearStart}</td>
+    ${assetTypes.map(type => `<td class="amount-cell">${formatCurrency(summaryByType[type]?.costAtYearStart || 0)}</td>`).join('')}
+    <td class="total-col">${formatCurrency(total.costAtYearStart)}</td>
+  </tr>`;
+
+  html += `<tr>
+    <td class="details-col">Additions</td>
+    <td class="date-col">${report.yearStart} to ${formatDateForDisplay(new Date(report.reportDate))}</td>
+    ${assetTypes.map(type => `<td class="amount-cell">${formatCurrency(summaryByType[type]?.additionsDuringPeriod || 0)}</td>`).join('')}
+    <td class="total-col">${formatCurrency(total.additionsDuringPeriod)}</td>
+  </tr>`;
+
+  html += `<tr class="highlight-row special-highlight">
+    <td class="details-col"><strong>Cost As At</strong></td>
+    <td class="date-col">${formatDateForDisplay(new Date(report.reportDate))}</td>
+    ${assetTypes.map(type => `<td class="amount-cell"><strong>${formatCurrency(summaryByType[type]?.costAtReportDate || 0)}</strong></td>`).join('')}
+    <td class="total-col"><strong>${formatCurrency(total.costAtReportDate)}</strong></td>
+  </tr>`;
+
+  // DEPRECIATION SECTION
+  html += `<tr>
+    <td class="details-col">Accumulated Depreciation</td>
+    <td class="date-col">${report.yearStart}</td>
+    ${assetTypes.map(type => `<td class="amount-cell">${formatCurrency(summaryByType[type]?.depAtYearStart || 0)}</td>`).join('')}
+    <td class="total-col">${formatCurrency(total.depAtYearStart)}</td>
+  </tr>`;
+
+  html += `<tr>
+    <td class="details-col">Charge For The Period</td>
+    <td class="date-col">${report.yearStart} to ${formatDateForDisplay(new Date(report.reportDate))}</td>
+    ${assetTypes.map(type => `<td class="amount-cell">${formatCurrency(summaryByType[type]?.chargeForPeriod || 0)}</td>`).join('')}
+    <td class="total-col">${formatCurrency(total.chargeForPeriod)}</td>
+  </tr>`;
+
+  html += `<tr class="highlight-row special-highlight">
+    <td class="details-col"><strong>Accumulated Depreciation</strong></td>
+    <td class="date-col">${formatDateForDisplay(new Date(report.reportDate))}</td>
+    ${assetTypes.map(type => `<td class="amount-cell"><strong>${formatCurrency(summaryByType[type]?.depAtReportDate || 0)}</strong></td>`).join('')}
+    <td class="total-col"><strong>${formatCurrency(total.depAtReportDate)}</strong></td>
+  </tr>`;
+
+  // NET BOOK VALUE SECTION
+  html += `<tr class="highlight-row special-highlight">
+    <td class="details-col"><strong>Net Book Value</strong></td>
+    <td class="date-col">${formatDateForDisplay(new Date(report.reportDate))}</td>
+    ${assetTypes.map(type => `<td class="amount-cell"><strong>${formatCurrency(summaryByType[type]?.netBookValue || 0)}</strong></td>`).join('')}
+    <td class="total-col"><strong>${formatCurrency(total.netBookValue)}</strong></td>
+  </tr>`;
+
+  // MONTHLY CHARGE SECTION
+  const monthYear = getMonthYearDisplay(new Date(report.reportDate));
+  html += `<tr class="highlight-row green-row">
+    <td class="details-col">Charge For The Month</td>
+    <td class="date-col">${monthYear}</td>
+    ${assetTypes.map(type => `<td class="amount-cell">${formatCurrency(summaryByType[type]?.chargeForMonth || 0)}</td>`).join('')}
+    <td class="total-col">${formatCurrency(total.chargeForMonth)}</td>
+  </tr>`;
+
+  // Update the table body display
+  tbody.innerHTML = html;
+  
+  // Create the print table
+  const printTable = document.createElement('table');
+  printTable.id = 'summaryDetailsTable';
+  printTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Date</th>
+        <th>Computers & Accessories</th>
+        <th>Furniture and Fixtures</th>
+        <th>Fittings</th>
+        <th>Office Equipment</th>
+        <th>Motor Vehicle</th>
+        <th>Software</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>${html}</tbody>
+  `;
+  
+  // Store the print table in a hidden container
+  let printContainer = document.getElementById('summaryTablePrintContainer');
+  if (!printContainer) {
+    printContainer = document.createElement('div');
+    printContainer.id = 'summaryTablePrintContainer';
+    printContainer.style.display = 'none';
+    document.body.appendChild(printContainer);
+  }
+  printContainer.innerHTML = '';
+  printContainer.appendChild(printTable);
+  
+  // Also replace any existing print table
+  let existingPrintTable = document.getElementById('summaryDetailsTable');
+  if (existingPrintTable && existingPrintTable !== printTable) {
+    existingPrintTable.replaceWith(printTable);
+  }
+}
+
+function getMonthYearDisplay(date) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[date.getMonth()] + '-' + date.getFullYear();
+}
+
+// ============================================
+// ACTION DROPDOWN
+// ============================================
+
+function openAssetActionDropdown(event, assetName) {
+  closeAssetActionDropdown();
+
+  const rect = event.target.closest('button').getBoundingClientRect();
+  const portal = document.getElementById('assetActionPortal');
+
+  portal.innerHTML = `
+    <div class="action-dropdown-content">
+      <button class="dropdown-item" onclick="editAsset('${escapeHtml(assetName)}')">
+        <i class="fas fa-edit"></i> Edit
+      </button>
+      <button class="dropdown-item" onclick="disposeAsset('${escapeHtml(assetName)}')">
+        <i class="fas fa-trash-alt"></i> Dispose
+      </button>
+    </div>
+  `;
+
+  portal.style.display = 'block';
+  portal.style.position = 'fixed';
+  portal.style.top = (rect.bottom + window.scrollY) + 'px';
+  portal.style.left = (rect.left + window.scrollX) + 'px';
+
+  assetPortalOpen = true;
+  event.stopPropagation();
+}
+
+function closeAssetActionDropdown() {
+  const portal = document.getElementById('assetActionPortal');
+  if (portal) {
+    portal.innerHTML = '';
+    portal.style.display = 'none';
+  }
+  assetPortalOpen = false;
+}
+
+function editAsset(assetName) {
+  closeAssetActionDropdown();
+  showAssetMessage('Edit functionality coming soon for: ' + assetName, 'info');
+}
+
+function disposeAsset(assetName) {
+  closeAssetActionDropdown();
+
+  if (confirm(`Are you sure you want to dispose of this asset?\n${assetName}`)) {
+    showAssetRegisterLoadingModal('Disposing asset...');
+
+    callGAS('updateAssetStatus', { assetName: assetName, newStatus: 'Disposed' })
+      .then(response => {
+        hideAssetRegisterLoadingModal();
+        if (response && !response.error) {
+          showAssetMessage('Asset disposed successfully!', 'success');
+          if (currentAsOfDate) {
+            return callGAS('updateAllAccumulatedDepreciation', { asOfDate: currentAsOfDate });
+          }
+        } else {
+          throw new Error(response?.error || 'Unknown error');
+        }
+      })
+      .then(() => {
+        return callGAS('getDetailedRegister', {});
+      })
+      .then(response => {
+        if (response && !response.error) {
+          allDetailedAssets = response;
+          loadDetailedRegister();
+          if (document.getElementById('summaryRegister').classList.contains('active')) {
+            loadSummaryRegister();
+          }
+        }
+      })
+      .catch(error => {
+        hideAssetRegisterLoadingModal();
+        showAssetMessage('Error disposing asset: ' + (error.message || error), 'error');
+      });
+  }
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+function formatDateForDisplay(date) {
+  if (!date) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const d = new Date(date);
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatCurrency(value) {
+  if (!value && value !== 0) return '0.00';
+  return parseFloat(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function showAssetMessage(message, type) {
+  let modal = document.getElementById('messageModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'messageModal';
+    modal.className = 'asset-message-modal';
+    document.body.appendChild(modal);
+  }
+  
+  let messageDiv = document.getElementById('modalMessage');
+  if (!messageDiv) {
+    const div = document.createElement('div');
+    div.id = 'modalMessage';
+    modal.appendChild(div);
+    messageDiv = div;
+  }
+  
+  const types = {
+    success: 'success-message',
+    error: 'error-message',
+    info: 'info-message',
+    warning: 'warning-message'
+  };
+
+  messageDiv.innerHTML = `<div class="${types[type] || types.info}">${message}</div>`;
+  modal.style.display = 'flex';
+  
+  setTimeout(() => {
+    if (modal) modal.style.display = 'none';
+  }, 3000);
+}
+
+function closeAssetModal() {
+  const modal = document.getElementById('messageModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function showAssetRegisterLoadingModal(message = 'Processing...') {
+  let modal = document.getElementById('assetRegisterLoadingModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'assetRegisterLoadingModal';
+    modal.className = 'asset-register-loading-modal';
+    document.body.appendChild(modal);
+  }
+  
+  modal.innerHTML = `
+    <div class="loading-modal-content">
+      <div class="loading-spinner"></div>
+      <p>${message}</p>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+function hideAssetRegisterLoadingModal() {
+  const modal = document.getElementById('assetRegisterLoadingModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function showAssetRegisterEmptyState(elementId, message, colSpan) {
+  const tbody = document.getElementById(elementId);
+  if (!tbody) return;
+  
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="${colSpan}" class="loading-cell">
+        <i class="fas fa-folder-open"></i>
+        <p>${message}</p>
+      </td>
+    </tr>
+  `;
+}
+
+function showAssetRegisterLoadingSpinner(elementId) {
+  const tbody = document.getElementById(elementId);
+  if (!tbody) return;
+  
+  const colSpan = elementId === 'detailedRegisterBody' ? 11 : 9;
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="${colSpan}" class="loading-cell">
+        <div class="table-loader">
+          <div class="spinner-small"></div>
+          <span>Loading...</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+// Print functions
+window.printAssetDetailed = function() {
+  if (typeof printUtils !== 'undefined' && printUtils.printAssetRegister) {
+    printUtils.printAssetRegister('detailedRegister');
+  } else {
+    console.error('printUtils not available');
+    window.print();
+  }
+};
+
+window.printAssetSummary = function() {
+  if (typeof printUtils !== 'undefined' && printUtils.printAssetRegister) {
+    printUtils.printAssetRegister('summaryRegister');
+  } else {
+    console.error('printUtils not available');
+    window.print();
+  }
+};
+
+// Export functions for global use
+window.initAssetRegisterModule = initAssetRegisterModule;
+window.switchAssetRegisterTab = switchAssetRegisterTab;
+window.recalculateAssetValues = recalculateAssetValues;
+window.recalculateSummaryRegister = recalculateSummaryRegister;
+window.openAssetActionDropdown = openAssetActionDropdown;
+window.editAsset = editAsset;
+window.disposeAsset = disposeAsset;
+window.closeAssetModal = closeAssetModal;
+window.loadSummaryRegister = loadSummaryRegister;
+window.printAssetDetailed = printAssetDetailed;
+window.printAssetSummary = printAssetSummary;
+window.applyGrouping = applyGrouping;
