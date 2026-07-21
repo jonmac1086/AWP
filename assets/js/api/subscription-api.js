@@ -1,11 +1,15 @@
 /* ============================================
-   SUBSCRIPTION & LICENSE API
+   SUBSCRIPTION API
    ============================================ */
 
-class SubscriptionApi extends BaseApiService {
+class SubscriptionApi extends ApiService {
   constructor() {
     super();
   }
+
+  // ============================================
+  // SUBSCRIPTION API
+  // ============================================
 
   async getSubscriptionCategories(options = {}) {
     this.log('Getting subscription categories');
@@ -59,10 +63,6 @@ class SubscriptionApi extends BaseApiService {
       newExpiryDate, 
       newAnnualCost 
     }, options);
-  }
-
-  async getSubscriptionByCode(subscriptionCode, options = {}) {
-    return this.request('getSubscriptionByCode', { subscriptionCode }, options);
   }
 }
 
