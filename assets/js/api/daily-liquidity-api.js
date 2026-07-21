@@ -1,5 +1,5 @@
 /* ============================================
-   DAILY LIQUIDITY API
+   DAILY LIQUIDITY API 
    ============================================ */
 
 class DailyLiquidityApi extends ApiService {
