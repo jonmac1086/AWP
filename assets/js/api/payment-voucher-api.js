@@ -2,13 +2,18 @@
    PAYMENT VOUCHER API
    ============================================ */
 
-class PaymentVoucherApi extends BaseApiService {
+class PaymentVoucherApi extends ApiService {
   constructor() {
     super();
   }
 
+  // ============================================
+  // PAYMENT VOUCHER API
+  // ============================================
+  
   async processForm(formData, options = {}) {
     this.log('processForm called with:', formData);
+    // Send formData directly, not wrapped in another object
     return this.request('processForm', formData, options);
   }
   
@@ -26,19 +31,8 @@ class PaymentVoucherApi extends BaseApiService {
   
   async updateVoucher(formData, options = {}) {
     this.log('updateVoucher called with:', formData);
+    // Send formData directly, not wrapped in another object
     return this.request('updateVoucher', formData, options);
-  }
-
-  async getVoucherHistory(pvNumber, options = {}) {
-    return this.request('getVoucherHistory', { pvNumber }, options);
-  }
-
-  async approveVoucher(pvNumber, approverName, options = {}) {
-    return this.request('approveVoucher', { pvNumber, approverName }, options);
-  }
-
-  async rejectVoucher(pvNumber, reason, options = {}) {
-    return this.request('rejectVoucher', { pvNumber, reason }, options);
   }
 }
 
