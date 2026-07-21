@@ -2,7 +2,7 @@
    BASE API SERVICE - Core Request Methods
    ============================================ */
 
-class BaseApiService {
+class ApiService {
   constructor() {
     // UPDATE THIS with your Google Apps Script Web App URL
     this.BASE_URL = 'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
@@ -105,4 +105,4 @@ class BaseApiService {
 }
 
 // Export for use in other files
-window.BaseApiService = BaseApiService;
+window.ApiService = ApiService;
