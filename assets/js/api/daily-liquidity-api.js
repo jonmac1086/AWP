@@ -2,10 +2,14 @@
    DAILY LIQUIDITY API
    ============================================ */
 
-class DailyLiquidityApi extends BaseApiService {
+class DailyLiquidityApi extends ApiService {
   constructor() {
     super();
   }
+
+  // ============================================
+  // DAILY LIQUIDITY API
+  // ============================================
 
   async uploadExcelToTrialBalance(data, options = {}) {
     this.log('uploadExcelToTrialBalance called with:', data);
@@ -35,10 +39,6 @@ class DailyLiquidityApi extends BaseApiService {
   async deleteLiquidityData(weekEnding, options = {}) {
     this.log('deleteLiquidityData called for week ending:', weekEnding);
     return this.request('deleteLiquidityData', { weekEnding }, options);
-  }
-
-  async getLiquiditySummary(fromDate, toDate, options = {}) {
-    return this.request('getLiquiditySummary', { fromDate, toDate }, options);
   }
 }
 
