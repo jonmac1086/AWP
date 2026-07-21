@@ -111,7 +111,7 @@ class ApiService {
   }
 
   // ============================================
-  // JSONP REQUEST (for small payloads)
+  // JSONP REQUEST (works with CORS)
   // ============================================
   async jsonpRequest(action, data = {}, options = {}) {
     return new Promise((resolve, reject) => {
@@ -130,6 +130,11 @@ class ApiService {
         
         const fullUrl = url.toString();
         this.log(`[${action}] JSONP Request (${fullUrl.length} chars)...`);
+        
+        // For large payloads, warn but still try
+        if (fullUrl.length > 2000) {
+          this.log(`[${action}] ⚠️ URL length is ${fullUrl.length} chars - may exceed browser limits`);
+        }
         
         const timeoutId = setTimeout(() => {
           if (window[callbackName]) {
@@ -169,12 +174,17 @@ class ApiService {
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
           
-          this.error(`[${action}] Script load failed - URL too long or endpoint unreachable`);
+          this.error(`[${action}] Script load failed`);
           
-          reject(new Error(
-            `Network error - JSONP request failed (URL may be too long).\n\n` +
-            `For large files, the system should use POST requests instead.`
-          ));
+          // Check if URL is too long
+          if (fullUrl.length > 2000) {
+            reject(new Error(
+              `URL too long (${fullUrl.length} chars). The base64 data is too large for JSONP.\n\n` +
+              `Try using a smaller Excel file or split the data into smaller chunks.`
+            ));
+          } else {
+            reject(new Error(`Network error - failed to connect to server`));
+          }
         };
 
         document.head.appendChild(script);
@@ -188,79 +198,20 @@ class ApiService {
   }
 
   // ============================================
-  // POST REQUEST (for large payloads like file uploads)
+  // POST REQUEST - Disabled due to CORS
   // ============================================
   async postRequest(action, data = {}, options = {}) {
-    return new Promise((resolve, reject) => {
-      try {
-        if (!this.BASE_URL) {
-          reject(new Error('API BASE_URL not configured'));
-          return;
-        }
-
-        this.log(`[${action}] POST Request (payload: ${JSON.stringify(data).length} chars)...`);
-
-        // Prepare form data
-        const formData = new FormData();
-        formData.append('action', action);
-        formData.append('formData', JSON.stringify(data));
-
-        // Create timeout promise
-        const timeoutPromise = new Promise((_, rejectTimeout) => {
-          setTimeout(() => rejectTimeout(new Error('POST request timeout')), this.requestTimeout);
-        });
-
-        // Create fetch promise
-        const fetchPromise = fetch(this.BASE_URL, {
-          method: 'POST',
-          body: formData
-        }).then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.json();
-        });
-
-        // Race between fetch and timeout
-        Promise.race([fetchPromise, timeoutPromise])
-          .then(result => {
-            this.log(`[${action}] POST Response:`, result);
-            if (result && result.success !== false) {
-              const cacheKey = `${action}_${JSON.stringify(data)}`;
-              this.cache.set(cacheKey, result);
-              resolve(result);
-            } else {
-              reject(new Error((result && result.error) || `API request failed: ${action}`));
-            }
-          })
-          .catch(error => {
-            this.error(`[${action}] POST Error:`, error);
-            reject(new Error(`POST request failed: ${error.message}`));
-          });
-
-      } catch (error) {
-        this.error(`[${action}] Request error:`, error);
-        reject(error);
-      }
-    });
+    this.log(`[${action}] POST is disabled due to CORS. Use JSONP instead.`);
+    throw new Error('POST requests are disabled. Please use JSONP.');
   }
 
   // ============================================
-  // SMART REQUEST - Chooses JSONP or POST
+  // SMART REQUEST - Force JSONP for all requests
   // ============================================
   async request(action, data = {}, options = {}) {
-    // For file uploads (large base64 strings), use POST
-    const dataString = JSON.stringify(data);
-    const isLargePayload = dataString.length > 5000;
-    const isFileUpload = action.toLowerCase().includes('upload');
-
-    if (isLargePayload || isFileUpload) {
-      this.log(`[${action}] Using POST (large payload: ${dataString.length} chars)`);
-      return this.postRequest(action, data, options);
-    } else {
-      this.log(`[${action}] Using JSONP (small payload: ${dataString.length} chars)`);
-      return this.jsonpRequest(action, data, options);
-    }
+    // ALWAYS use JSONP - POST doesn't work due to CORS
+    this.log(`[${action}] Using JSONP (all requests)`);
+    return this.jsonpRequest(action, data, options);
   }
 
   clearCache(action = null) {
