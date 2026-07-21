@@ -1,5 +1,5 @@
 /* ============================================
-   INVENTORY API
+   INVENTORY API 
    ============================================ */
 
 class InventoryApi extends ApiService {
