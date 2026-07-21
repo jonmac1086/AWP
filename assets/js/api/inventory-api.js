@@ -2,11 +2,15 @@
    INVENTORY API
    ============================================ */
 
-class InventoryApi extends BaseApiService {
+class InventoryApi extends ApiService {
   constructor() {
     super();
   }
 
+  // ============================================
+  // INVENTORY API
+  // ============================================
+  
   async generateInventoryCategoryCode(options = {}) {
     return this.request('generateInventoryCategoryCode', {}, options);
   }
@@ -42,14 +46,6 @@ class InventoryApi extends BaseApiService {
   
   async removeInventory(inventoryCode, options = {}) {
     return this.request('removeInventory', { inventoryCode }, options);
-  }
-
-  async getInventoryByCode(inventoryCode, options = {}) {
-    return this.request('getInventoryByCode', { inventoryCode }, options);
-  }
-
-  async updateInventoryQuantity(inventoryCode, newQuantity, options = {}) {
-    return this.request('updateInventoryQuantity', { inventoryCode, newQuantity }, options);
   }
 }
 
