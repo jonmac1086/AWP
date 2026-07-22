@@ -245,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using form POST with iframe
+    // UPLOAD FUNCTION - Using fetch POST
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -262,105 +262,56 @@
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Create a hidden form and submit it via POST
-                // This bypasses all JavaScript wrappers
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.target = 'uploadFrame';
-                form.action = window.APP_CONFIG.API_URL;
-                form.enctype = 'multipart/form-data';
+                // Get API URL from config
+                const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
+                              'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
                 
-                // Add fields
-                const actionField = document.createElement('input');
-                actionField.type = 'hidden';
-                actionField.name = 'action';
-                actionField.value = 'uploadExcelToTrialBalance';
-                form.appendChild(actionField);
-                
-                const dataField = document.createElement('input');
-                dataField.type = 'hidden';
-                dataField.name = 'formData';
-                dataField.value = JSON.stringify({
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('action', 'uploadExcelToTrialBalance');
+                formData.append('formData', JSON.stringify({
                     base64: base64,
                     filename: fileData.name,
                     weekEnding: weekEnding
-                });
-                form.appendChild(dataField);
-                
-                // Create iframe for response
-                const iframe = document.createElement('iframe');
-                iframe.name = 'uploadFrame';
-                iframe.style.display = 'none';
-                iframe.id = 'uploadFrame';
-                document.body.appendChild(iframe);
-                
-                // Handle iframe load (response)
-                iframe.onload = function() {
-                    try {
-                        // Try to get response from iframe
-                        const responseText = iframe.contentDocument?.body?.innerText || 
-                                           iframe.contentWindow?.document?.body?.innerText;
-                        
-                        if (responseText) {
-                            try {
-                                const response = JSON.parse(responseText);
-                                handleUploadResponse(response);
-                            } catch (e) {
-                                // If not JSON, treat as string
-                                handleUploadResponse({ success: true, message: responseText });
-                            }
-                        } else {
-                            // Empty response - assume success
-                            handleUploadResponse({ success: true, message: 'Upload completed successfully' });
+                }));
+
+                // Use fetch with POST
+                fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(response) {
+                    return response.text().then(function(text) {
+                        try {
+                            const data = JSON.parse(text);
+                            return data;
+                        } catch (e) {
+                            return { success: true, message: text };
                         }
-                    } catch (err) {
-                        console.error('Error reading iframe response:', err);
-                        // If we can't read the response, assume success
-                        handleUploadResponse({ success: true, message: 'Upload completed' });
-                    } finally {
-                        // Clean up iframe after a delay
-                        setTimeout(() => {
-                            if (iframe.parentNode) {
-                                iframe.parentNode.removeChild(iframe);
-                            }
-                        }, 5000);
-                    }
-                };
-                
-                // Handle iframe error
-                iframe.onerror = function() {
+                    });
+                })
+                .then(function(data) {
                     hideLoadingModal();
-                    showToast('❌ Upload failed. Please try again.', 'error');
-                    setTimeout(() => {
-                        if (iframe.parentNode) {
-                            iframe.parentNode.removeChild(iframe);
+                    console.log('Upload response:', data);
+                    
+                    if (data && data.success !== false) {
+                        const message = data.message || data.result || 'Upload successful';
+                        showToast('✅ ' + message, 'success');
+                        closeUploadModal();
+                        if (data.rowsImported) {
+                            showToast('Rows imported: ' + data.rowsImported, 'info');
                         }
-                    }, 1000);
-                };
-                
-                // Submit form
-                document.body.appendChild(form);
-                form.submit();
-                
-                // Clean up form after submit
-                setTimeout(() => {
-                    if (form.parentNode) {
-                        form.parentNode.removeChild(form);
+                    } else {
+                        const errorMsg = data?.error || data?.message || 'Unknown error';
+                        showToast('❌ Upload failed: ' + errorMsg, 'error');
                     }
-                }, 1000);
-                
-                // Set a timeout for the upload
-                setTimeout(function() {
-                    // If still loading after 60 seconds, show error
-                    if (isLoading) {
-                        hideLoadingModal();
-                        showToast('❌ Upload timed out. Please try again.', 'error');
-                        if (iframe.parentNode) {
-                            iframe.parentNode.removeChild(iframe);
-                        }
-                    }
-                }, 60000);
-                
+                })
+                .catch(function(error) {
+                    hideLoadingModal();
+                    console.error('Upload error:', error);
+                    showToast('❌ Error uploading: ' + error.message, 'error');
+                });
+                    
             } catch (err) {
                 hideLoadingModal();
                 console.error('Upload error:', err);
@@ -374,24 +325,6 @@
         };
         
         reader.readAsDataURL(fileData);
-    }
-
-    // Handle upload response
-    function handleUploadResponse(response) {
-        hideLoadingModal();
-        console.log('Upload response:', response);
-        
-        if (response && response.success !== false) {
-            const message = response.message || response.result || 'Upload successful';
-            showToast('✅ ' + message, 'success');
-            closeUploadModal();
-            if (response.rowsImported) {
-                showToast('Rows imported: ' + response.rowsImported, 'info');
-            }
-        } else {
-            const errorMsg = response?.error || response?.message || 'Unknown error';
-            showToast('❌ Upload failed: ' + errorMsg, 'error');
-        }
     }
 
     // ---------- UPLOAD MODAL ----------
