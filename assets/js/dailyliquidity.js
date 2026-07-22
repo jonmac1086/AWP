@@ -38,7 +38,6 @@
     let currentData = [];
     let isLoading = false;
     let selectedFile = null;
-    let uploadTimeout = null;
 
     // ---------- GET WEEK DATES ----------
     function getWeekDatesFromEnding(weekEndingDate) {
@@ -183,10 +182,6 @@
             modal.style.display = 'none';
         }
         isLoading = false;
-        if (uploadTimeout) {
-            clearTimeout(uploadTimeout);
-            uploadTimeout = null;
-        }
     }
 
     // ---------- SET DEFAULT DATE ----------
@@ -250,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Simple fetch with no-cors
+    // UPLOAD FUNCTION - Using google.script.run directly
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -263,61 +258,92 @@
             try {
                 const base64 = e.target.result.split(',')[1];
                 
-                console.log('Uploading file:', fileData.name);
+                console.log('=== UPLOAD DEBUG ===');
+                console.log('File name:', fileData.name);
+                console.log('File size:', fileData.size, 'bytes');
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Get API URL from config
-                const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                              'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
-                
-                // Prepare form data
-                const formData = new FormData();
-                formData.append('action', 'uploadExcelToTrialBalance');
-                formData.append('formData', JSON.stringify({
-                    base64: base64,
-                    filename: fileData.name,
-                    weekEnding: weekEnding
-                }));
-
-                // Use fetch with POST - no-cors mode
-                fetch(apiUrl, {
-                    method: 'POST',
-                    body: formData,
-                    mode: 'no-cors'
-                })
-                .then(function() {
-                    // With no-cors, we can't read the response, but the request was sent
-                    // Wait a moment then show success
-                    console.log('Upload request sent successfully');
+                // Use google.script.run directly
+                // This is the most reliable method for Google Apps Script
+                if (typeof google !== 'undefined' && google.script && google.script.run) {
+                    console.log('Using google.script.run...');
                     
-                    // Set a timeout to hide loading and show success
-                    uploadTimeout = setTimeout(function() {
+                    google.script.run
+                        .withSuccessHandler(function(response) {
+                            hideLoadingModal();
+                            console.log('Upload response:', response);
+                            
+                            if (typeof response === 'string') {
+                                showToast('✅ ' + response, 'success');
+                                closeUploadModal();
+                            } else if (response && response.success) {
+                                showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
+                                closeUploadModal();
+                                if (response.rowsImported !== undefined) {
+                                    showToast('Rows imported: ' + response.rowsImported, 'info');
+                                }
+                            } else {
+                                const errorMsg = response?.error || response?.message || 'Unknown error';
+                                showToast('❌ Upload failed: ' + errorMsg, 'error');
+                            }
+                        })
+                        .withFailureHandler(function(error) {
+                            hideLoadingModal();
+                            console.error('Upload error:', error);
+                            showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                        })
+                        .uploadExcelToTrialBalance(base64, fileData.name, weekEnding);
+                } else {
+                    // Fallback to fetch with POST
+                    console.log('google.script.run not available, using fetch...');
+                    
+                    const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
+                                  'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
+                    
+                    const formData = new FormData();
+                    formData.append('action', 'uploadExcelToTrialBalance');
+                    formData.append('formData', JSON.stringify({
+                        base64: base64,
+                        filename: fileData.name,
+                        weekEnding: weekEnding
+                    }));
+                    
+                    fetch(apiUrl, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(function(response) {
+                        return response.text().then(function(text) {
+                            try {
+                                return JSON.parse(text);
+                            } catch (e) {
+                                return { success: true, message: text };
+                            }
+                        });
+                    })
+                    .then(function(data) {
                         hideLoadingModal();
-                        showToast('✅ Excel uploaded to Trial Balance successfully!', 'success');
-                        closeUploadModal();
+                        console.log('Upload response:', data);
                         
-                        // Ask user to check the sheet
-                        showToast('📊 Check the Trial Balance sheet for the imported data', 'info');
-                    }, 3000);
-                })
-                .catch(function(error) {
-                    hideLoadingModal();
-                    console.error('Upload error:', error);
-                    // With no-cors, errors might not be accurate
-                    // If it's a network error, the upload might still have worked
-                    if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
-                        showToast('✅ Upload completed! Check Trial Balance sheet', 'success');
-                        closeUploadModal();
-                    } else {
+                        if (data && data.success !== false) {
+                            showToast('✅ ' + (data.message || 'Upload successful!'), 'success');
+                            closeUploadModal();
+                        } else {
+                            showToast('❌ Upload failed: ' + (data?.error || 'Unknown error'), 'error');
+                        }
+                    })
+                    .catch(function(error) {
+                        hideLoadingModal();
+                        console.error('Upload error:', error);
                         showToast('❌ Error uploading: ' + error.message, 'error');
-                    }
-                });
+                    });
+                }
                     
             } catch (err) {
                 hideLoadingModal();
-                console.error('Upload error:', err);
-                showToast('❌ Error uploading: ' + err.message, 'error');
+                console.error('File processing error:', err);
+                showToast('❌ Error: ' + err.message, 'error');
             }
         };
         
@@ -367,10 +393,6 @@
             statusDiv.style.display = 'none';
             confirmBtn.disabled = true;
             selectedFile = null;
-            if (uploadTimeout) {
-                clearTimeout(uploadTimeout);
-                uploadTimeout = null;
-            }
         }
 
         // Close modal functions
@@ -519,10 +541,6 @@
     window.closeUploadModal = function() {
         const modal = document.getElementById('uploadModal');
         if (modal) modal.style.display = 'none';
-        if (uploadTimeout) {
-            clearTimeout(uploadTimeout);
-            uploadTimeout = null;
-        }
     };
 
 })();
