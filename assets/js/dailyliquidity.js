@@ -38,7 +38,6 @@
     let currentData = [];
     let isLoading = false;
     let selectedFile = null;
-    let uploadTimeout = null;
 
     // ---------- GET WEEK DATES ----------
     function getWeekDatesFromEnding(weekEndingDate) {
@@ -183,10 +182,6 @@
             modal.style.display = 'none';
         }
         isLoading = false;
-        if (uploadTimeout) {
-            clearTimeout(uploadTimeout);
-            uploadTimeout = null;
-        }
     }
 
     // ---------- SET DEFAULT DATE ----------
@@ -250,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Simple fetch with no-cors
+    // UPLOAD FUNCTION - Using google.script.run from parent
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -267,52 +262,104 @@
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Get API URL from config
-                const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                              'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
+                // Get the parent window's google.script.run
+                // This bypasses any wrappers in the current window
+                let scriptRun = null;
                 
-                // Prepare form data
-                const formData = new FormData();
-                formData.append('action', 'uploadExcelToTrialBalance');
-                formData.append('formData', JSON.stringify({
-                    base64: base64,
-                    filename: fileData.name,
-                    weekEnding: weekEnding
-                }));
-
-                // Use fetch with POST - no-cors mode
-                fetch(apiUrl, {
-                    method: 'POST',
-                    body: formData,
-                    mode: 'no-cors'
-                })
-                .then(function() {
-                    // With no-cors, we can't read the response, but the request was sent
-                    // Wait a moment then show success
-                    console.log('Upload request sent successfully');
-                    
-                    // Set a timeout to hide loading and show success
-                    uploadTimeout = setTimeout(function() {
-                        hideLoadingModal();
-                        showToast('✅ Excel uploaded to Trial Balance successfully!', 'success');
-                        closeUploadModal();
-                        
-                        // Ask user to check the sheet
-                        showToast('📊 Check the Trial Balance sheet for the imported data', 'info');
-                    }, 3000);
-                })
-                .catch(function(error) {
-                    hideLoadingModal();
-                    console.error('Upload error:', error);
-                    // With no-cors, errors might not be accurate
-                    // If it's a network error, the upload might still have worked
-                    if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
-                        showToast('✅ Upload completed! Check Trial Balance sheet', 'success');
-                        closeUploadModal();
-                    } else {
-                        showToast('❌ Error uploading: ' + error.message, 'error');
+                // Try to get from parent window (if in iframe)
+                try {
+                    if (window.parent && window.parent.google && window.parent.google.script) {
+                        scriptRun = window.parent.google.script.run;
+                        console.log('Using google.script.run from parent window');
                     }
-                });
+                } catch (e) {
+                    console.log('Cannot access parent window, using local');
+                }
+                
+                // If parent doesn't work, use local
+                if (!scriptRun) {
+                    try {
+                        if (window.google && window.google.script) {
+                            scriptRun = window.google.script.run;
+                            console.log('Using google.script.run from current window');
+                        }
+                    } catch (e) {
+                        console.log('Cannot access google.script.run');
+                    }
+                }
+                
+                // If still no scriptRun, try the original google.script.run
+                if (!scriptRun) {
+                    try {
+                        // Access the original google.script.run from the iframe
+                        const iframe = document.querySelector('iframe[name="uploadFrame"]');
+                        if (iframe && iframe.contentWindow) {
+                            scriptRun = iframe.contentWindow.google.script.run;
+                            console.log('Using google.script.run from iframe');
+                        }
+                    } catch (e) {
+                        console.log('Cannot access iframe google.script.run');
+                    }
+                }
+                
+                // Final fallback - use the API wrapper (might fail for large files)
+                if (!scriptRun) {
+                    console.log('Using fallback - window.API');
+                    if (window.API && window.API.uploadExcelToTrialBalance) {
+                        window.API.uploadExcelToTrialBalance({
+                            base64: base64,
+                            filename: fileData.name,
+                            weekEnding: weekEnding
+                        })
+                        .then(function(response) {
+                            hideLoadingModal();
+                            console.log('Upload response:', response);
+                            if (response && response.success) {
+                                showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
+                                closeUploadModal();
+                            } else {
+                                showToast('❌ Upload failed: ' + (response?.error || 'Unknown error'), 'error');
+                            }
+                        })
+                        .catch(function(error) {
+                            hideLoadingModal();
+                            console.error('Upload error:', error);
+                            showToast('❌ Error uploading: ' + error.message, 'error');
+                        });
+                        return;
+                    } else {
+                        hideLoadingModal();
+                        showToast('❌ google.script.run not available', 'error');
+                        return;
+                    }
+                }
+                
+                // Use the found scriptRun
+                scriptRun
+                    .withSuccessHandler(function(response) {
+                        hideLoadingModal();
+                        console.log('Upload response:', response);
+                        
+                        if (typeof response === 'string') {
+                            showToast('✅ ' + response, 'success');
+                            closeUploadModal();
+                        } else if (response && response.success) {
+                            showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
+                            closeUploadModal();
+                            if (response.rowsImported) {
+                                showToast('Rows imported: ' + response.rowsImported, 'info');
+                            }
+                        } else {
+                            const errorMsg = response?.error || response?.message || 'Unknown error';
+                            showToast('❌ Upload failed: ' + errorMsg, 'error');
+                        }
+                    })
+                    .withFailureHandler(function(error) {
+                        hideLoadingModal();
+                        console.error('Upload error:', error);
+                        showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                    })
+                    .uploadExcelToTrialBalance(base64, fileData.name, weekEnding);
                     
             } catch (err) {
                 hideLoadingModal();
@@ -367,10 +414,6 @@
             statusDiv.style.display = 'none';
             confirmBtn.disabled = true;
             selectedFile = null;
-            if (uploadTimeout) {
-                clearTimeout(uploadTimeout);
-                uploadTimeout = null;
-            }
         }
 
         // Close modal functions
@@ -519,10 +562,6 @@
     window.closeUploadModal = function() {
         const modal = document.getElementById('uploadModal');
         if (modal) modal.style.display = 'none';
-        if (uploadTimeout) {
-            clearTimeout(uploadTimeout);
-            uploadTimeout = null;
-        }
     };
 
 })();
