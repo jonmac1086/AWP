@@ -245,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Uses a function name NOT in main.js interceptor
+    // UPLOAD FUNCTION - Using window.API (same as working code)
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -262,17 +262,19 @@
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Use google.script.run with a function name NOT in the interceptor list
-                // 'importLiquidityExcelToSheet' is NOT in the main.js actions array
-                google.script.run
-                    .withSuccessHandler(function(response) {
+                // Use window.API.callGAS with a custom action
+                // This bypasses the main.js interceptor
+                if (window.callGAS) {
+                    window.callGAS('importLiquidityExcelToSheet', {
+                        base64: base64,
+                        filename: fileData.name,
+                        weekEnding: weekEnding
+                    })
+                    .then(function(response) {
                         hideLoadingModal();
                         console.log('Upload response:', response);
                         
-                        if (typeof response === 'string') {
-                            showToast('✅ ' + response, 'success');
-                            closeUploadModal();
-                        } else if (response && response.success) {
+                        if (response && response.success) {
                             showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
                             closeUploadModal();
                             if (response.rowsImported !== undefined) {
@@ -283,12 +285,39 @@
                             showToast('❌ Upload failed: ' + errorMsg, 'error');
                         }
                     })
-                    .withFailureHandler(function(error) {
+                    .catch(function(error) {
                         hideLoadingModal();
                         console.error('Upload error:', error);
                         showToast('❌ Error uploading: ' + (error.message || error), 'error');
-                    })
-                    .importLiquidityExcelToSheet(base64, fileData.name, weekEnding);
+                    });
+                } else {
+                    // Fallback: Use google.script.run directly
+                    google.script.run
+                        .withSuccessHandler(function(response) {
+                            hideLoadingModal();
+                            console.log('Upload response:', response);
+                            
+                            if (typeof response === 'string') {
+                                showToast('✅ ' + response, 'success');
+                                closeUploadModal();
+                            } else if (response && response.success) {
+                                showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
+                                closeUploadModal();
+                                if (response.rowsImported !== undefined) {
+                                    showToast('Rows imported: ' + response.rowsImported, 'info');
+                                }
+                            } else {
+                                const errorMsg = response?.error || response?.message || 'Unknown error';
+                                showToast('❌ Upload failed: ' + errorMsg, 'error');
+                            }
+                        })
+                        .withFailureHandler(function(error) {
+                            hideLoadingModal();
+                            console.error('Upload error:', error);
+                            showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                        })
+                        .importLiquidityExcelToSheet(base64, fileData.name, weekEnding);
+                }
                     
             } catch (err) {
                 hideLoadingModal();
