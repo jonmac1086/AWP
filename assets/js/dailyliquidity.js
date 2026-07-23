@@ -245,7 +245,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using google.script.run directly
+    // UPLOAD FUNCTION - Uses a function name NOT in main.js interceptor
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         if (isLoading) return;
@@ -258,92 +258,42 @@
             try {
                 const base64 = e.target.result.split(',')[1];
                 
-                console.log('=== UPLOAD DEBUG ===');
-                console.log('File name:', fileData.name);
-                console.log('File size:', fileData.size, 'bytes');
+                console.log('Uploading file:', fileData.name);
                 console.log('Base64 length:', base64.length);
                 console.log('Week Ending:', weekEnding);
                 
-                // Use google.script.run directly
-                // This is the most reliable method for Google Apps Script
-                if (typeof google !== 'undefined' && google.script && google.script.run) {
-                    console.log('Using google.script.run...');
-                    
-                    google.script.run
-                        .withSuccessHandler(function(response) {
-                            hideLoadingModal();
-                            console.log('Upload response:', response);
-                            
-                            if (typeof response === 'string') {
-                                showToast('✅ ' + response, 'success');
-                                closeUploadModal();
-                            } else if (response && response.success) {
-                                showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
-                                closeUploadModal();
-                                if (response.rowsImported !== undefined) {
-                                    showToast('Rows imported: ' + response.rowsImported, 'info');
-                                }
-                            } else {
-                                const errorMsg = response?.error || response?.message || 'Unknown error';
-                                showToast('❌ Upload failed: ' + errorMsg, 'error');
-                            }
-                        })
-                        .withFailureHandler(function(error) {
-                            hideLoadingModal();
-                            console.error('Upload error:', error);
-                            showToast('❌ Error uploading: ' + (error.message || error), 'error');
-                        })
-                        .uploadExcelToTrialBalance(base64, fileData.name, weekEnding);
-                } else {
-                    // Fallback to fetch with POST
-                    console.log('google.script.run not available, using fetch...');
-                    
-                    const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                                  'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec';
-                    
-                    const formData = new FormData();
-                    formData.append('action', 'uploadExcelToTrialBalance');
-                    formData.append('formData', JSON.stringify({
-                        base64: base64,
-                        filename: fileData.name,
-                        weekEnding: weekEnding
-                    }));
-                    
-                    fetch(apiUrl, {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(function(response) {
-                        return response.text().then(function(text) {
-                            try {
-                                return JSON.parse(text);
-                            } catch (e) {
-                                return { success: true, message: text };
-                            }
-                        });
-                    })
-                    .then(function(data) {
+                // Use google.script.run with a function name NOT in the interceptor list
+                // 'importLiquidityExcelToSheet' is NOT in the main.js actions array
+                google.script.run
+                    .withSuccessHandler(function(response) {
                         hideLoadingModal();
-                        console.log('Upload response:', data);
+                        console.log('Upload response:', response);
                         
-                        if (data && data.success !== false) {
-                            showToast('✅ ' + (data.message || 'Upload successful!'), 'success');
+                        if (typeof response === 'string') {
+                            showToast('✅ ' + response, 'success');
                             closeUploadModal();
+                        } else if (response && response.success) {
+                            showToast('✅ ' + (response.message || 'Upload successful!'), 'success');
+                            closeUploadModal();
+                            if (response.rowsImported !== undefined) {
+                                showToast('Rows imported: ' + response.rowsImported, 'info');
+                            }
                         } else {
-                            showToast('❌ Upload failed: ' + (data?.error || 'Unknown error'), 'error');
+                            const errorMsg = response?.error || response?.message || 'Unknown error';
+                            showToast('❌ Upload failed: ' + errorMsg, 'error');
                         }
                     })
-                    .catch(function(error) {
+                    .withFailureHandler(function(error) {
                         hideLoadingModal();
                         console.error('Upload error:', error);
-                        showToast('❌ Error uploading: ' + error.message, 'error');
-                    });
-                }
+                        showToast('❌ Error uploading: ' + (error.message || error), 'error');
+                    })
+                    .importLiquidityExcelToSheet(base64, fileData.name, weekEnding);
                     
             } catch (err) {
                 hideLoadingModal();
                 console.error('File processing error:', err);
-                showToast('❌ Error: ' + err.message, 'error');
+                showToast('❌ Error processing file: ' + err.message, 'error');
             }
         };
         
