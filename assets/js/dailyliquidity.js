@@ -244,124 +244,135 @@
         }, 3500);
     }
 
-    // ============================================
-    // UPLOAD FUNCTION - Using form POST with iframe
-    // (RELIABLE for large base64 payloads)
-    // ============================================
-    function uploadToTrialBalance(weekEnding, fileData) {
-        if (isLoading) return;
-        
-        showLoadingModal('Uploading Excel to Trial Balance...');
+// uploadToTrialBalance - uses form+iframe but listens for postMessage from iframe
+function uploadToTrialBalance(weekEnding, fileData) {
+  if (isLoading) return;
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const dataUrl = e.target.result;
-                const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1) ? dataUrl.split(',')[1] : dataUrl;
-                
-                console.log('Uploading file:', fileData.name);
-                console.log('Base64 length:', base64 ? base64.length : 0);
-                console.log('Week Ending:', weekEnding);
-                
-                // Create a hidden form and submit it via POST to the Apps Script webapp URL.
-                // This avoids JSONP / GET URL length limits and CORS issues.
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.target = 'uploadFrame';
-                form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-                form.style.display = 'none';
-                form.enctype = 'application/x-www-form-urlencoded';
+  showLoadingModal('Uploading Excel to Trial Balance...');
 
-                const actionField = document.createElement('input');
-                actionField.type = 'hidden';
-                actionField.name = 'action';
-                actionField.value = 'uploadExcelToTrialBalance';
-                form.appendChild(actionField);
-                
-                const dataField = document.createElement('input');
-                dataField.type = 'hidden';
-                dataField.name = 'formData';
-                dataField.value = JSON.stringify({
-                    base64: base64,
-                    filename: fileData.name,
-                    weekEnding: weekEnding
-                });
-                form.appendChild(dataField);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const dataUrl = e.target.result;
+      const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1) ? dataUrl.split(',')[1] : dataUrl;
 
-                document.body.appendChild(form);
+      console.log('Uploading file:', fileData.name);
+      console.log('Base64 length:', base64 ? base64.length : 0);
+      console.log('Week Ending:', weekEnding);
 
-                // Create iframe for response handling
-                const iframe = document.createElement('iframe');
-                iframe.name = 'uploadFrame';
-                iframe.style.display = 'none';
-                iframe.id = 'uploadFrame';
-                document.body.appendChild(iframe);
+      // Build payload
+      const payload = {
+        base64: base64,
+        filename: fileData.name,
+        weekEnding: weekEnding
+      };
 
-                // Set a timer to handle timeouts
-                const MAX_TIMEOUT = 2 * 60 * 1000; // 2 minutes
-                const timeoutId = setTimeout(() => {
-                    cleanup();
-                    hideLoadingModal();
-                    showToast('❌ Upload timed out. Please try again.', 'error');
-                }, MAX_TIMEOUT);
+      // Create hidden form
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.target = 'uploadFrame';
+      form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
+      form.style.display = 'none';
 
-                function cleanup() {
-                    clearTimeout(timeoutId);
-                    try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch(e){}
-                    try { if (form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-                }
+      const actionField = document.createElement('input');
+      actionField.type = 'hidden';
+      actionField.name = 'action';
+      actionField.value = 'uploadExcelToTrialBalance';
+      form.appendChild(actionField);
 
-                // Handle iframe load (response)
-                iframe.onload = function() {
-                    try {
-                        // Try to read the iframe's body text (Apps Script returns JSON)
-                        const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
-                        const responseText = doc && doc.body ? doc.body.innerText : null;
-                        
-                        if (responseText) {
-                            try {
-                                const response = JSON.parse(responseText);
-                                handleUploadResponse(response);
-                            } catch (err) {
-                                // Not JSON — return raw text
-                                handleUploadResponse({ success: true, message: responseText });
-                            }
-                        } else {
-                            // Empty body — treat as success (some deployments return empty)
-                            handleUploadResponse({ success: true, message: 'Upload completed' });
-                        }
-                    } catch (err) {
-                        console.error('Error reading iframe response:', err);
-                        // If we can't read response (cross-origin or other), assume success but inform user
-                        handleUploadResponse({ success: true, message: 'Upload completed (could not read remote response)' });
-                    } finally {
-                        cleanup();
-                    }
-                };
+      const dataField = document.createElement('input');
+      dataField.type = 'hidden';
+      dataField.name = 'formData';
+      dataField.value = JSON.stringify(payload);
+      form.appendChild(dataField);
 
-                iframe.onerror = function(err) {
-                    cleanup();
-                    hideLoadingModal();
-                    showToast('❌ Upload failed. Please try again.', 'error');
-                };
+      document.body.appendChild(form);
 
-                // Submit the form
-                form.submit();
+      // Create iframe
+      let iframe = document.getElementById('uploadFrame');
+      if (iframe && iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+        iframe = null;
+      }
+      iframe = document.createElement('iframe');
+      iframe.name = 'uploadFrame';
+      iframe.id = 'uploadFrame';
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
 
-            } catch (err) {
-                hideLoadingModal();
-                console.error('File processing error:', err);
-                showToast('❌ File processing error: ' + (err.message || err), 'error');
-            }
-        };
-        
-        reader.onerror = function() {
+      // Setup a one-time message listener
+      const MESSAGE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
+      let handled = false;
+      const timeoutId = setTimeout(() => {
+        if (!handled) {
+          handled = true;
+          cleanup();
+          hideLoadingModal();
+          showToast('❌ Upload timed out. Please try again.', 'error');
+        }
+      }, MESSAGE_TIMEOUT);
+
+      function messageHandler(event) {
+        try {
+          // Optionally validate event.origin here (recommended in production).
+          // For example: if (event.origin.indexOf('script.googleusercontent.com') === -1) return;
+          const response = event.data;
+          if (!response || (typeof response !== 'object')) {
+            // Not our response; ignore
+            return;
+          }
+
+          // Only handle messages that look like our upload response
+          if (response.success === undefined && response.error === undefined && response.message === undefined) {
+            // not our upload response
+            return;
+          }
+
+          if (handled) return;
+          handled = true;
+          clearTimeout(timeoutId);
+
+          // Process response
+          handleUploadResponse(response);
+
+        } catch (err) {
+          console.error('Error in messageHandler:', err);
+          if (!handled) {
+            handled = true;
+            clearTimeout(timeoutId);
             hideLoadingModal();
-            showToast('❌ Error reading file', 'error');
-        };
-        
-        reader.readAsDataURL(fileData);
+            showToast('❌ Upload failed (message handling error)', 'error');
+          }
+        } finally {
+          cleanup();
+        }
+      }
+
+      window.addEventListener('message', messageHandler, false);
+
+      function cleanup() {
+        try { window.removeEventListener('message', messageHandler, false); } catch(e){}
+        try { if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch(e){}
+        try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
+      }
+
+      // Submit the form (this loads the iframe; the server's response HTML will postMessage to parent)
+      form.submit();
+
+    } catch (err) {
+      hideLoadingModal();
+      console.error('File processing error:', err);
+      showToast('❌ File processing error: ' + (err.message || err), 'error');
     }
+  };
+
+  reader.onerror = function() {
+    hideLoadingModal();
+    showToast('❌ Error reading file', 'error');
+  };
+
+  reader.readAsDataURL(fileData);
+}
 
     // Handle upload response
     function handleUploadResponse(response) {
