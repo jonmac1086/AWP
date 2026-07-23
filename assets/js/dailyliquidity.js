@@ -1,605 +1,550 @@
-// Daily Liquidity Module - Upload Excel to Trial Balance
-(function() {
-    'use strict';
+// ============================================
+// ENTRY POINT - Handle GET requests (for JSONP)
+// ============================================
+function doGet(e) {
+  if (e && e.parameter && e.parameter.callback) {
+    return handleJsonpRequest(e);
+  }
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('Accounts Workspace')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
 
-    // ---------- EMPTY TABLE STRUCTURE ----------
-    const EMPTY_ROWS = [
-        { label: 'TOTAL DEPOSITS LIABILITY', values: ['', '', '', '', '', '', ''], bold: true, icon: 'arrow-up' },
-        { isSection: true, label: 'LIQUIDITY REQUIREMENTS' },
-        { label: 'Primary Reserve required (8%)', values: ['', '', '', '', '', '', ''] },
-        { label: 'Secondary Reserve required (20%)', values: ['', '', '', '', '', '', ''] },
-        { label: 'TOTAL RESERVE REQUIRED - TRR', values: ['', '', '', '', '', '', ''], bold: true },
-        { isSection: true, label: 'LIQUID ASSETS' },
-        { label: 'Current & Call Account Balances', values: ['', '', '', '', '', '', ''] },
-        { label: 'Placement with Other Banks', values: ['', '', '', '', '', '', ''] },
-        { label: 'Total Balance with Banks', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Cash in hand', values: ['', '', '', '', '', '', ''] },
-        { label: 'Gov. Securities (Treasury bills, Bonds etc)', values: ['', '', '', '', '', '', ''] },
-        { label: 'TOTAL LIQUID ASSETS - TLA', values: ['', '', '', '', '', '', ''], bold: true, totalRow: true },
-        { label: 'SURPLUS/(DEFICIT) TLA - TRR =', values: ['', '', '', '', '', '', ''], bold: true, surplusRow: true },
-        { label: 'Primary Reserve Held', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Surplus/(Deficit)*', values: ['', '', '', '', '', '', ''], positive: true },
-        { label: 'Surplus/Deficit (with borrowings)*', values: ['', '', '', '', '', '', ''], negative: true },
-        { label: 'Secondary Reserve Held', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Surplus/(Deficit)*', values: ['', '', '', '', '', '', ''], positive: true },
-        { label: 'Primary Reserve %', values: ['', '', '', '', '', '', ''] },
-        { label: 'Secondary Reserve %', values: ['', '', '', '', '', '', ''] },
-        { label: 'TOTAL LOANS & ADVANCES', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'NET WORTH (last month close)', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Plant, Property & Equipment', values: ['', '', '', '', '', '', ''] },
-        { isSection: true, label: 'RATIOS' },
-        { label: 'Total Liquid Assets/Deposits', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Cash in hand/Deposit', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Loans/Deposits', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'Total Loans/Networth', values: ['', '', '', '', '', '', ''], bold: true },
-        { label: 'PPE/Networth', values: ['', '', '', '', '', '', ''], bold: true }
-    ];
+// ============================================
+// Handle JSONP requests
+// ============================================
+function handleJsonpRequest(e) {
+  var callback = e.parameter.callback;
+  var action = e.parameter.action;
+  var data = e.parameter.data ? JSON.parse(e.parameter.data) : {};
+  
+  Logger.log('JSONP Request - Action: ' + action);
+  Logger.log('Data: ' + JSON.stringify(data));
+  
+  var result;
+  
+  try {
+    switch(action) {
+      // ============================================
+      // DIAGNOSTIC ACTIONS
+      // ============================================
+      case 'testDriveAPI':
+        result = testDriveAPI();
+        break;
+      
+      case 'testFileConversion':
+        result = testFileConversion(data.base64, data.filename);
+        break;
 
-    let currentData = [];
-    let isLoading = false;
-    let selectedFile = null;
+      // Existing cases...
+      case 'getUserInfo':
+        result = getUserInfo();
+        break;
+      case 'processForm':
+        result = processForm(data);
+        break;
+      case 'getNextPVNumber':
+        result = getNextPVNumber(data.voucherType);
+        break;
+      case 'getPVNumbersByType':
+        result = getPVNumbersByType();
+        break;
+      case 'getVoucherByNumber':
+        result = getVoucherByNumber(data.pvNumber, data.voucherType);
+        break;
+      case 'updateVoucher':
+        result = updateVoucher(data);
+        break;
+      case 'addNewInventory':
+        result = addNewInventory(data);
+        break;
+      case 'getInventoryCategories':
+        result = getInventoryCategories();
+        break;
+      case 'generateInventoryCategoryCode':
+        result = generateInventoryCategoryCode();
+        break;
+      case 'getNextInventoryCode':
+        result = getNextInventoryCode(data.mainCode);
+        break;
+      case 'getPurchaseReportData':
+        var fromDate = data.fromDate || getTodayMinusMonths(12);
+        var toDate = data.toDate || getTodayString();
+        result = getPurchaseReportData(fromDate, toDate);
+        break;
+      case 'getUsageReportData':
+        var fromDate = data.fromDate || getTodayMinusMonths(12);
+        var toDate = data.toDate || getTodayString();
+        result = getUsageReportData(fromDate, toDate);
+        break;
+      case 'getInventoryListData':
+        result = getInventoryListData();
+        break;
+      case 'recordInventoryUsage':
+        result = recordInventoryUsage(data);
+        break;
+      case 'removeInventory':
+        result = removeInventory(data.inventoryCode);
+        break;
+      case 'generateAssetCode':
+        result = generateAssetCode(data.assetType);
+        break;
+      case 'addNewAsset':
+        result = addNewAsset(data);
+        break;
+      case 'getDetailedRegister':
+        result = getDetailedRegister();
+        break;
+      case 'updateAssetStatus':
+        result = updateAssetStatus(data.assetName, data.newStatus);
+        break;
+      case 'updateAllAccumulatedDepreciation':
+        result = updateAllAccumulatedDepreciation(data.asOfDate);
+        break;
+      case 'getFixedAssetsSummaryReport':
+        result = getFixedAssetsSummaryReport(data.toDate);
+        break;
+      case 'generateInvestmentCode':
+        result = generateInvestmentCode(data.investmentType);
+        break;
+      case 'addNewInvestment':
+        result = addNewInvestment(data);
+        break;
+      case 'getInvestmentsByDateRange':
+        result = getInvestmentsByDateRange(data.fromDate, data.toDate);
+        break;
+      case 'getMaturedInvestments':
+        result = getMaturedInvestments(data.toDate);
+        break;
+      case 'getUniqueInvestmentTypes':
+        result = getUniqueInvestmentTypes();
+        break;
+      case 'getUniqueBanks':
+        result = getUniqueBanks();
+        break;
+      case 'getAllInvestments':
+        result = getAllInvestments();
+        break;
+      case 'getInvestmentByCode':
+        result = getInvestmentByCode(data.investmentCode);
+        break;
+      case 'updateInvestmentRedeemDate':
+        result = updateInvestmentRedeemDate(data.investmentCode, data.redeemDate);
+        break;
+      case 'generateSubscriptionCategoryCode':
+        result = generateSubscriptionCategoryCode();
+        break;
+      case 'getSubscriptionCategories':
+        result = getSubscriptionCategories();
+        break;
+      case 'getNextSubscriptionCode':
+        result = getNextSubscriptionCode(data.categoryCode);
+        break;
+      case 'addSubscription':
+        result = addSubscription(data);
+        break;
+      case 'getAllSubscriptions':
+        result = getAllSubscriptions();
+        break;
+      case 'updateSubscription':
+        result = updateSubscription(data);
+        break;
+      case 'deleteSubscription':
+        result = deleteSubscription(data.subscriptionCode);
+        break;
+      case 'getSubscriptionsByDateRange':
+        var fromDate = data.fromDate || getTodayMinusMonths(12);
+        var toDate = data.toDate || getTodayString();
+        result = getSubscriptionsByDateRange(fromDate, toDate);
+        break;
+      case 'getExpiredSubscriptions':
+        result = getExpiredSubscriptions(data.asOfDate || getTodayString());
+        break;
+      case 'renewSubscription':
+        result = renewSubscription(data.subscriptionCode, data.newExpiryDate, data.newAnnualCost);
+        break;
+      case 'updateSubscriptionPayment':
+        result = updateSubscriptionPayment(data.subscriptionCode, data.amountPaid);
+        break;
+      case 'getSubscriptionByCode':
+        result = getSubscriptionByCode(data.subscriptionCode);
+        break;
 
-    // ---------- GET WEEK DATES ----------
-    function getWeekDatesFromEnding(weekEndingDate) {
-        const endDate = new Date(weekEndingDate);
-        endDate.setHours(0, 0, 0, 0);
+      // ============================================
+      // DAILY LIQUIDITY CASES
+      // ============================================
+      case 'uploadExcelToTrialBalance':
+        Logger.log('uploadExcelToTrialBalance called');
+        // The function expects (base64, filename, weekEnding)
+        // But data might come as an object with these properties
+        var base64 = data.base64 || data;
+        var filename = data.filename || 'upload.xlsx';
+        var weekEnding = data.weekEnding || '';
         
-        if (isNaN(endDate.getTime())) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const dayOfWeek = today.getDay();
-            const diffToWednesday = dayOfWeek <= 3 ? 3 - dayOfWeek : 10 - dayOfWeek;
-            const wednesday = new Date(today);
-            wednesday.setDate(today.getDate() + diffToWednesday);
-            return getWeekDatesFromEnding(wednesday);
-        }
-        
-        const dayOfWeek = endDate.getDay();
-        const diffToWednesday = dayOfWeek <= 3 ? 3 - dayOfWeek : 10 - dayOfWeek;
-        const wednesday = new Date(endDate);
-        wednesday.setDate(endDate.getDate() + diffToWednesday);
-        wednesday.setHours(0, 0, 0, 0);
-        
-        const weekDates = [];
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date(wednesday);
-            date.setDate(wednesday.getDate() - i);
-            date.setHours(0, 0, 0, 0);
-            weekDates.push(date);
-        }
-        return weekDates;
-    }
-
-    function formatDateHeader(date) {
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        return days[date.getDay()] + ' ' + date.getDate();
-    }
-
-    function formatWeekEnding(date) {
-        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const day = date.getDate();
-        const month = months[date.getMonth()];
-        const year = date.getFullYear();
-        return month + ' ' + day + ', ' + year;
-    }
-
-    // ---------- UPDATE COLUMN HEADERS ----------
-    function updateColumnHeadersWithDates(weekEndingDate) {
-        const weekDates = getWeekDatesFromEnding(weekEndingDate);
-        const dayNames = weekDates.map(d => formatDateHeader(d));
-        
-        for (let i = 1; i <= 7; i++) {
-            const col = document.getElementById('col' + i);
-            if (col) col.textContent = dayNames[i - 1];
-        }
-        
-        const lastDay = weekDates[weekDates.length - 1];
-        const weekEnding = formatWeekEnding(lastDay);
-        updateWeekEnding(weekEnding);
-        
-        const datePicker = document.getElementById('weekEndingDate');
-        if (datePicker) {
-            const year = lastDay.getFullYear();
-            const month = String(lastDay.getMonth() + 1).padStart(2, '0');
-            const day = String(lastDay.getDate()).padStart(2, '0');
-            datePicker.value = year + '-' + month + '-' + day;
-        }
-        
-        return { weekDates, dayNames, weekEnding };
-    }
-
-    // ---------- UPDATE WEEK ENDING DISPLAY ----------
-    function updateWeekEnding(weekEnding) {
-        const displays = document.querySelectorAll('#weekEndingDisplay, #footerWeekEnding');
-        displays.forEach(el => {
-            if (el) el.textContent = weekEnding;
-        });
-    }
-
-    // ---------- RENDER TABLE ----------
-    function renderTable(data) {
-        const tbody = document.getElementById('tableBody');
-        if (!tbody) return;
-        let html = '';
-
-        if (!data || data.length === 0) {
-            data = EMPTY_ROWS;
-        }
-
-        data.forEach(item => {
-            if (item.isSection) {
-                html += `<tr class="section-header"><td colspan="8"><i class="fas fa-${item.icon || 'folder-open'}"></i> ${item.label}</td></tr>`;
-                return;
-            }
-
-            let rowClass = '';
-            if (item.totalRow) rowClass = 'total-row';
-            else if (item.surplusRow) rowClass = 'surplus-row';
-
-            let labelHtml = item.label;
-            if (item.icon) {
-                labelHtml = `<i class="fas fa-${item.icon}" style="margin-right:4px;color:#2b6e4f;"></i> ${labelHtml}`;
-            }
-            if (item.bold) labelHtml = `<strong>${labelHtml}</strong>`;
-
-            let valueCells = '';
-            if (item.values && item.values.length === 7) {
-                item.values.forEach((val) => {
-                    const displayVal = val && String(val).trim() !== '' ? val : '<span class="empty-cell">—</span>';
-                    let cls = 'numeric';
-                    if (item.positive) cls += ' positive';
-                    if (item.negative) cls += ' negative';
-                    valueCells += `<td class="${cls}">${displayVal}</td>`;
-                });
-            } else {
-                valueCells = '<td colspan="7" class="text-muted">—</td>';
-            }
-
-            html += `<tr class="${rowClass}">
-                <td class="row-label">${labelHtml}</td>
-                ${valueCells}
-            </tr>`;
-        });
-
-        tbody.innerHTML = html;
-        currentData = data;
-    }
-
-    // ---------- LOADING MODAL ----------
-    function showLoadingModal(message) {
-        const modal = document.getElementById('loadingModal');
-        const msg = document.getElementById('loadingMessage');
-        if (modal) {
-            modal.style.display = 'flex';
-            if (msg) msg.textContent = message || 'Loading data...';
-        }
-        isLoading = true;
-    }
-
-    function hideLoadingModal() {
-        const modal = document.getElementById('loadingModal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-        isLoading = false;
-    }
-
-    // ---------- SET DEFAULT DATE ----------
-    function setDefaultDate() {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const dayOfWeek = today.getDay();
-        const diffToWednesday = dayOfWeek <= 3 ? 3 - dayOfWeek : 10 - dayOfWeek;
-        const wednesday = new Date(today);
-        wednesday.setDate(today.getDate() + diffToWednesday);
-        
-        const datePicker = document.getElementById('weekEndingDate');
-        if (datePicker) {
-            const year = wednesday.getFullYear();
-            const month = String(wednesday.getMonth() + 1).padStart(2, '0');
-            const day = String(wednesday.getDate()).padStart(2, '0');
-            datePicker.value = year + '-' + month + '-' + day;
-        }
-        
-        return wednesday;
-    }
-
-    // ---------- TOAST MESSAGE ----------
-    function showToast(message, type) {
-        let toast = document.getElementById('liquidityToast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'liquidityToast';
-            toast.style.cssText = `
-                position: fixed; bottom: 20px; right: 20px;
-                padding: 10px 20px; border-radius: 8px;
-                z-index: 9999; font-weight: 600; font-size: 13px;
-                max-width: 380px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                transition: all 0.3s ease; transform: translateY(20px); opacity: 0;
-                pointer-events: none;
-            `;
-            document.body.appendChild(toast);
-        }
-
-        const colors = {
-            success: { bg: '#d1fae5', color: '#065f46', border: '#34d399' },
-            error: { bg: '#fee2e2', color: '#991b1b', border: '#f87171' },
-            info: { bg: '#dbeafe', color: '#1e40af', border: '#60a5fa' },
-            warning: { bg: '#fef3c7', color: '#92400e', border: '#fbbf24' }
-        };
-        const style = colors[type] || colors.info;
-
-        toast.style.background = style.bg;
-        toast.style.color = style.color;
-        toast.style.borderLeft = `4px solid ${style.border}`;
-        toast.style.pointerEvents = 'auto';
-        toast.textContent = message;
-        toast.style.transform = 'translateY(0)';
-        toast.style.opacity = '1';
-
-        clearTimeout(toast._timer);
-        toast._timer = setTimeout(() => {
-            toast.style.transform = 'translateY(20px)';
-            toast.style.opacity = '0';
-        }, 3500);
-    }
-
-    // ---------- UPLOAD STATUS HELPERS ----------
-    function setUploadProgress(message) {
-        const statusIcon = document.getElementById('uploadStatusIcon');
-        const statusMessage = document.getElementById('uploadStatusMessage');
-        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        if (statusMessage) statusMessage.textContent = message || 'Uploading to Trial Balance...';
-    }
-
-    function setUploadSuccess(message) {
-        const statusIcon = document.getElementById('uploadStatusIcon');
-        const statusMessage = document.getElementById('uploadStatusMessage');
-        const confirmBtn = document.getElementById('uploadConfirmBtn');
-        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color:#16a34a;"></i>';
-        if (statusMessage) statusMessage.textContent = message || 'Upload successful';
-        if (confirmBtn) confirmBtn.disabled = false;
-        // Close modal shortly after success
-        setTimeout(() => {
-            closeUploadModal();
-        }, 1200);
-    }
-
-    function setUploadFailure(message) {
-        const statusIcon = document.getElementById('uploadStatusIcon');
-        const statusMessage = document.getElementById('uploadStatusMessage');
-        const confirmBtn = document.getElementById('uploadConfirmBtn');
-        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;"></i>';
-        if (statusMessage) statusMessage.textContent = message || 'Upload failed';
-        if (confirmBtn) confirmBtn.disabled = false;
-    }
-
-    // ============================================
-    // UPLOAD FUNCTION - Using form POST with iframe
-    // (RELIABLE for large base64 payloads)
-    // NOTE: DO NOT show the global loading modal here; rely on the upload modal status.
-    // ============================================
-    function uploadToTrialBalance(weekEnding, fileData) {
-        if (isLoading) return;
-        // Do NOT call showLoadingModal here to avoid the global modal showing behind the upload modal.
-        setUploadProgress('Uploading to Trial Balance...');
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const dataUrl = e.target.result;
-                const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1) ? dataUrl.split(',')[1] : dataUrl;
-                
-                console.log('Uploading file:', fileData.name);
-                console.log('Base64 length:', base64 ? base64.length : 0);
-                console.log('Week Ending:', weekEnding);
-                
-                // Build payload
-                const payload = {
-                  base64: base64,
-                  filename: fileData.name,
-                  weekEnding: weekEnding
-                };
-
-                // Create hidden form and iframe
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.target = 'uploadFrame';
-                form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-                form.style.display = 'none';
-                form.enctype = 'application/x-www-form-urlencoded';
-
-                const actionField = document.createElement('input');
-                actionField.type = 'hidden';
-                actionField.name = 'action';
-                actionField.value = 'uploadExcelToTrialBalance';
-                form.appendChild(actionField);
-                
-                const dataField = document.createElement('input');
-                dataField.type = 'hidden';
-                dataField.name = 'formData';
-                dataField.value = JSON.stringify(payload);
-                form.appendChild(dataField);
-
-                document.body.appendChild(form);
-
-                // Remove any previous iframe then create a new one
-                let existingIframe = document.getElementById('uploadFrame');
-                if (existingIframe && existingIframe.parentNode) {
-                    existingIframe.parentNode.removeChild(existingIframe);
-                }
-                const iframe = document.createElement('iframe');
-                iframe.name = 'uploadFrame';
-                iframe.id = 'uploadFrame';
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-
-                // Setup a one-time message listener for postMessage from server iframe
-                const MESSAGE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
-                let handled = false;
-                const timeoutId = setTimeout(() => {
-                    if (!handled) {
-                        handled = true;
-                        setUploadFailure('Upload timed out. Please try again.');
-                    }
-                }, MESSAGE_TIMEOUT);
-
-                function messageHandler(event) {
-                    try {
-                        // Optionally validate origin:
-                        // if (event.origin.indexOf('script.google') === -1 && event.origin.indexOf('script.googleusercontent') === -1) return;
-                        const response = event.data;
-                        if (!response || (typeof response !== 'object')) {
-                            return;
-                        }
-                        if (response.success === undefined && response.error === undefined && response.message === undefined) {
-                            return;
-                        }
-                        if (handled) return;
-                        handled = true;
-                        clearTimeout(timeoutId);
-                        handleUploadResponse(response);
-                    } catch (err) {
-                        console.error('Error in messageHandler:', err);
-                        if (!handled) {
-                            handled = true;
-                            clearTimeout(timeoutId);
-                            setUploadFailure('Upload failed (message handling error)');
-                        }
-                    } finally {
-                        cleanup();
-                    }
-                }
-
-                function cleanup() {
-                    try { window.removeEventListener('message', messageHandler, false); } catch(e){}
-                    try { if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch(e){}
-                    try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-                }
-
-                window.addEventListener('message', messageHandler, false);
-
-                // Submit the form (server should reply with an HTML page that calls window.parent.postMessage)
-                form.submit();
-
-            } catch (err) {
-                console.error('File processing error:', err);
-                setUploadFailure('File processing error: ' + (err.message || err));
-            }
-        };
-        
-        reader.onerror = function() {
-            setUploadFailure('Error reading file');
-        };
-        
-        reader.readAsDataURL(fileData);
-    }
-
-    // Handle upload response
-    function handleUploadResponse(response) {
-        // Do NOT call hideLoadingModal() — we rely on the upload modal status area.
-        console.log('Upload response:', response);
-        
-        if (response && response.success !== false) {
-            const message = response.message || response.result || 'Upload successful';
-            setUploadSuccess('✅ ' + message);
-            if (response.rowsImported) {
-                showToast('Rows imported: ' + response.rowsImported, 'info');
-            }
+        // If data is an object with base64 property, extract it
+        if (data && data.base64) {
+          result = uploadExcelToTrialBalance(data.base64, data.filename, data.weekEnding);
         } else {
-            const errorMsg = response?.error || response?.message || 'Unknown error';
-            setUploadFailure('❌ Upload failed: ' + errorMsg);
+          // If data is the base64 string directly
+          result = uploadExcelToTrialBalance(data, filename, weekEnding);
         }
+        break;
+
+      case 'test':
+        result = { success: true, message: 'API is working' };
+        break;
+      
+      default:
+        result = { error: 'Unknown action: ' + action };
+        Logger.log('Unknown action: ' + action);
     }
-
-    // ---------- UPLOAD MODAL ----------
-    function setupUploadModal() {
-        const uploadBtn = document.getElementById('uploadBtn');
-        const modal = document.getElementById('uploadModal');
-        const overlay = document.getElementById('uploadModalOverlay');
-        const closeBtn = document.getElementById('uploadModalClose');
-        const cancelBtn = document.getElementById('uploadCancelBtn');
-        const confirmBtn = document.getElementById('uploadConfirmBtn');
-        const uploadWeekEnding = document.getElementById('uploadWeekEnding');
-        const fileInput = document.getElementById('uploadFileInput');
-        const fileArea = document.getElementById('uploadFileArea');
-        const fileInfo = document.getElementById('uploadFileInfo');
-        const fileName = document.getElementById('uploadFileName');
-        const fileRemove = document.getElementById('uploadFileRemove');
-        const statusDiv = document.getElementById('uploadStatus');
-        const statusIcon = document.getElementById('uploadStatusIcon');
-        const statusMessage = document.getElementById('uploadStatusMessage');
-
-        // Open modal
-        if (uploadBtn) {
-            uploadBtn.addEventListener('click', function() {
-                modal.style.display = 'flex';
-                const currentDate = document.getElementById('weekEndingDate').value;
-                if (uploadWeekEnding) {
-                    uploadWeekEnding.value = currentDate || '';
-                }
-                statusDiv.style.display = 'none';
-                selectedFile = null;
-                confirmBtn.disabled = true;
-                fileArea.style.display = 'block';
-                fileInfo.style.display = 'none';
-                fileInput.value = '';
-            });
-        }
-
-        function closeUploadModal() {
-            modal.style.display = 'none';
-            statusDiv.style.display = 'none';
-            confirmBtn.disabled = true;
-            selectedFile = null;
-        }
-
-        // Close modal functions
-        if (closeBtn) closeBtn.addEventListener('click', closeUploadModal);
-        if (cancelBtn) cancelBtn.addEventListener('click', closeUploadModal);
-        if (overlay) overlay.addEventListener('click', closeUploadModal);
-
-        // Close on Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && modal.style.display === 'flex') {
-                closeUploadModal();
-            }
-        });
-
-        // File input change
-        if (fileInput) {
-            fileInput.addEventListener('change', function(e) {
-                e.stopPropagation();
-                if (this.files && this.files.length > 0) {
-                    handleFileSelect(this.files[0]);
-                }
-            });
-        }
-
-        // Click on file area triggers file input
-        if (fileArea) {
-            fileArea.addEventListener('click', function(e) {
-                if (e.target.tagName !== 'INPUT') {
-                    if (fileInput) fileInput.click();
-                }
-            });
-
-            // Drag and drop
-            fileArea.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                this.classList.add('dragover');
-            });
-
-            fileArea.addEventListener('dragleave', function(e) {
-                e.preventDefault();
-                this.classList.remove('dragover');
-            });
-
-            fileArea.addEventListener('drop', function(e) {
-                e.preventDefault();
-                this.classList.remove('dragover');
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    handleFileSelect(e.dataTransfer.files[0]);
-                }
-            });
-        }
-
-        // Handle file selection
-        function handleFileSelect(file) {
-            // Check if it's an Excel file
-            const validTypes = [
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'application/vnd.ms-excel',
-                'text/csv'
-            ];
-            const validExtensions = ['.xlsx', '.xls', '.csv'];
-            
-            const fileExt = '.' + file.name.split('.').pop().toLowerCase();
-            const isValidType = validTypes.includes(file.type) || validExtensions.includes(fileExt);
-            
-            if (!isValidType) {
-                showToast('❌ Please select an Excel or CSV file', 'error');
-                return;
-            }
-            
-            selectedFile = file;
-            fileName.textContent = file.name;
-            fileInfo.style.display = 'flex';
-            fileArea.style.display = 'none';
-            confirmBtn.disabled = false;
-            showToast('✅ File selected: ' + file.name, 'success');
-        }
-
-        // Remove file
-        if (fileRemove) {
-            fileRemove.addEventListener('click', function() {
-                selectedFile = null;
-                fileInput.value = '';
-                fileInfo.style.display = 'none';
-                fileArea.style.display = 'block';
-                confirmBtn.disabled = true;
-            });
-        }
-
-        // Confirm upload
-        if (confirmBtn) {
-            confirmBtn.addEventListener('click', function() {
-                const weekEnding = (uploadWeekEnding && uploadWeekEnding.value) || document.getElementById('weekEndingDate').value;
-                
-                if (!weekEnding) {
-                    showToast('⚠️ Please select a week ending date', 'warning');
-                    return;
-                }
-
-                if (!selectedFile) {
-                    showToast('⚠️ Please select a file to upload', 'warning');
-                    return;
-                }
-
-                // Show status inside upload modal (do not use global loading modal)
-                statusDiv.style.display = 'flex';
-                if (statusIcon) statusIcon.className = 'upload-status-icon';
-                if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                if (statusMessage) statusMessage.textContent = 'Uploading to Trial Balance...';
-                confirmBtn.disabled = true;
-
-                // Upload to Trial Balance (uses form POST/iframe)
-                uploadToTrialBalance(weekEnding, selectedFile);
-            });
-        }
-    }
-
-    // ---------- HANDLE DATE CHANGE ----------
-    function handleDateChange() {
-        const datePicker = document.getElementById('weekEndingDate');
-        if (datePicker) {
-            updateColumnHeadersWithDates(datePicker.value);
-        }
-    }
-
-    // ---------- EXPORT GLOBALLY ----------
-    window.initDailyLiquidityModule = function() {
-        console.log('Initializing Daily Liquidity Module');
-        
-        const defaultDate = setDefaultDate();
-        updateColumnHeadersWithDates(defaultDate);
-        renderTable(EMPTY_ROWS);
-        
-        // Setup Upload Modal
-        setupUploadModal();
-        
-        const datePicker = document.getElementById('weekEndingDate');
-        if (datePicker) {
-            datePicker.addEventListener('change', handleDateChange);
-        }
+  } catch (error) {
+    Logger.log('ERROR in handleJsonpRequest: ' + error.toString());
+    Logger.log('Stack: ' + error.stack);
+    result = { 
+      success: false,
+      error: error.toString(),
+      action: action,
+      stack: error.stack
     };
+  }
+  
+  var jsonResult = JSON.stringify(result);
+  var output = ContentService.createTextOutput(callback + '(' + jsonResult + ')');
+  output.setMimeType(ContentService.MimeType.JAVASCRIPT);
+  return output;
+}
 
-    // Expose functions for console/testing
-    window.uploadLiquidityData = uploadToTrialBalance;
-    window.renderLiquidityTable = renderTable;
-    window.closeUploadModal = function() {
-        const modal = document.getElementById('uploadModal');
-        if (modal) modal.style.display = 'none';
+// ============================================
+// ENTRY POINT - Handle POST requests
+// (returns JSON for all actions, including uploads)
+// ============================================
+function doPost(e) {
+  try {
+    var output;
+    var params = e.parameter || {};
+    var action = params.action;
+    Logger.log('POST Request - Action: ' + action);
+    
+    var result;
+    
+    switch(action) {
+      // Existing cases (mirror what's in handleJsonpRequest)
+      case 'getUserInfo':
+        result = getUserInfo();
+        break;
+      case 'processForm':
+        result = processForm(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'getNextPVNumber':
+        result = getNextPVNumber(params.voucherType);
+        break;
+      case 'getPVNumbersByType':
+        result = getPVNumbersByType();
+        break;
+      case 'getVoucherByNumber':
+        result = getVoucherByNumber(params.pvNumber, params.voucherType);
+        break;
+      case 'updateVoucher':
+        result = updateVoucher(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'addNewInventory':
+        result = addNewInventory(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'getInventoryCategories':
+        result = getInventoryCategories();
+        break;
+      case 'generateInventoryCategoryCode':
+        result = generateInventoryCategoryCode();
+        break;
+      case 'getNextInventoryCode':
+        result = getNextInventoryCode(params.mainCode);
+        break;
+      case 'getPurchaseReportData':
+        var fromDate = params.fromDate || getTodayMinusMonths(12);
+        var toDate = params.toDate || getTodayString();
+        result = getPurchaseReportData(fromDate, toDate);
+        break;
+      case 'getUsageReportData':
+        var fromDate = params.fromDate || getTodayMinusMonths(12);
+        var toDate = params.toDate || getTodayString();
+        result = getUsageReportData(fromDate, toDate);
+        break;
+      case 'getInventoryListData':
+        result = getInventoryListData();
+        break;
+      case 'recordInventoryUsage':
+        result = recordInventoryUsage(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'removeInventory':
+        result = removeInventory(params.inventoryCode);
+        break;
+      case 'generateAssetCode':
+        result = generateAssetCode(params.assetType);
+        break;
+      case 'addNewAsset':
+        result = addNewAsset(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'getDetailedRegister':
+        result = getDetailedRegister();
+        break;
+      case 'updateAssetStatus':
+        result = updateAssetStatus(params.assetName, params.newStatus);
+        break;
+      case 'updateAllAccumulatedDepreciation':
+        result = updateAllAccumulatedDepreciation(params.asOfDate);
+        break;
+      case 'getFixedAssetsSummaryReport':
+        result = getFixedAssetsSummaryReport(params.toDate);
+        break;
+      case 'generateInvestmentCode':
+        result = generateInvestmentCode(params.investmentType);
+        break;
+      case 'addNewInvestment':
+        result = addNewInvestment(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'getInvestmentsByDateRange':
+        result = getInvestmentsByDateRange(params.fromDate, params.toDate);
+        break;
+      case 'getMaturedInvestments':
+        result = getMaturedInvestments(params.toDate);
+        break;
+      case 'getUniqueInvestmentTypes':
+        result = getUniqueInvestmentTypes();
+        break;
+      case 'getUniqueBanks':
+        result = getUniqueBanks();
+        break;
+      case 'getAllInvestments':
+        result = getAllInvestments();
+        break;
+      case 'getInvestmentByCode':
+        result = getInvestmentByCode(params.investmentCode);
+        break;
+      case 'updateInvestmentRedeemDate':
+        var formData = params.formData ? JSON.parse(params.formData) : {};
+        result = updateInvestmentRedeemDate(formData.investmentCode, formData.redeemDate);
+        break;
+      case 'generateSubscriptionCategoryCode':
+        result = generateSubscriptionCategoryCode();
+        break;
+      case 'getSubscriptionCategories':
+        result = getSubscriptionCategories();
+        break;
+      case 'getNextSubscriptionCode':
+        result = getNextSubscriptionCode(params.categoryCode);
+        break;
+      case 'addSubscription':
+        result = addSubscription(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'getAllSubscriptions':
+        result = getAllSubscriptions();
+        break;
+      case 'updateSubscription':
+        result = updateSubscription(params.formData ? JSON.parse(params.formData) : {});
+        break;
+      case 'deleteSubscription':
+        result = deleteSubscription(params.subscriptionCode);
+        break;
+      case 'getSubscriptionsByDateRange':
+        var fromDate = params.fromDate || getTodayMinusMonths(12);
+        var toDate = params.toDate || getTodayString();
+        result = getSubscriptionsByDateRange(fromDate, toDate);
+        break;
+      case 'getExpiredSubscriptions':
+        result = getExpiredSubscriptions(params.asOfDate || getTodayString());
+        break;
+      case 'renewSubscription':
+        result = renewSubscription(params.subscriptionCode, params.newExpiryDate, params.newAnnualCost);
+        break;
+      case 'updateSubscriptionPayment':
+        result = updateSubscriptionPayment(params.subscriptionCode, params.amountPaid);
+        break;
+      case 'getSubscriptionByCode':
+        result = getSubscriptionByCode(params.subscriptionCode);
+        break;
+
+      // ============================================
+      // DAILY LIQUIDITY CASES
+      // ============================================
+      case 'uploadExcelToTrialBalance':
+        Logger.log('uploadExcelToTrialBalance called (POST)');
+        var postData = params.formData ? JSON.parse(params.formData) : params;
+        Logger.log('Data: base64 length=' + (postData.base64 ? postData.base64.length : 0) + ', filename=' + postData.filename + ', weekEnding=' + postData.weekEnding);
+        // Support both shapes: either postData is an object with base64 property,
+        // or postData itself is the base64 string (legacy).
+        if (postData && postData.base64 !== undefined) {
+          result = uploadExcelToTrialBalance(postData.base64, postData.filename, postData.weekEnding);
+        } else {
+          // postData may be the raw base64 string
+          result = uploadExcelToTrialBalance(postData, postData.filename || 'upload.xlsx', postData.weekEnding || '');
+        }
+        break;
+      case 'test':
+        result = { success: true, message: 'API is working' };
+        break;
+      
+      default:
+        result = { error: 'Unknown action: ' + action };
+        Logger.log('Unknown action: ' + action);
+    }
+    
+    // Default: return JSON for all actions (including uploads)
+    output = ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    output.setHeader('Access-Control-Allow-Origin', '*');
+    output.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    output.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return output;
+    
+  } catch (error) {
+    Logger.log('ERROR in doPost: ' + error.toString());
+    Logger.log('Stack: ' + (error.stack || 'no stack'));
+    
+    var output = ContentService.createTextOutput(JSON.stringify({ 
+      success: false,
+      error: error.message,
+      stack: error.stack
+    })).setMimeType(ContentService.MimeType.JSON);
+    output.setHeader('Access-Control-Allow-Origin', '*');
+    output.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    output.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return output;
+  }
+}
+
+// ============================================
+// ENTRY POINT - Handle OPTIONS requests
+// ============================================
+function doOptions(e) {
+  var output = ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
+  output.setHeader('Access-Control-Allow-Origin', '*');
+  output.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  output.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  output.setHeader('Access-Control-Max-Age', '3600');
+  return output;
+}
+
+// ============================================
+// DIAGNOSTIC FUNCTIONS
+// ============================================
+
+/**
+ * Test if Drive API is available
+ */
+function testDriveAPI() {
+  try {
+    Logger.log('Testing Drive API availability...');
+    
+    // Try to list files (requires Drive API)
+    const files = Drive.Files.list();
+    
+    Logger.log('✓ Drive API is available and working');
+    return {
+      success: true,
+      message: 'Drive API is available',
+      fileCount: files.items ? files.items.length : 0
     };
+  } catch (e) {
+    Logger.log('✗ Drive API error: ' + e.message);
+    return {
+      success: false,
+      error: 'Drive API not available: ' + e.message,
+      solution: 'Add Google Drive API to Google Apps Script: Services > + > Google Drive API > V3'
+    };
+  }
+}
 
-})();
+/**
+ * Test file conversion (base64 -> blob -> sheet)
+ */
+function testFileConversion(base64Data, filename) {
+  try {
+    Logger.log('Testing file conversion...');
+    Logger.log('Filename: ' + filename);
+    Logger.log('Base64 length: ' + (base64Data ? base64Data.length : 0));
+    
+    if (!base64Data) {
+      throw new Error('No base64 data provided');
+    }
+    
+    // Step 1: Decode base64
+    Logger.log('Step 1: Decoding base64...');
+    const bytes = Utilities.base64Decode(base64Data);
+    Logger.log('Decoded bytes: ' + bytes.length);
+    
+    // Step 2: Create blob
+    Logger.log('Step 2: Creating blob...');
+    const blob = Utilities.newBlob(bytes, MimeType.MICROSOFT_EXCEL, filename);
+    Logger.log('Blob MIME type: ' + blob.getContentType());
+    Logger.log('Blob size: ' + blob.getSize());
+    
+    // Step 3: Test Drive insert (this is where permission errors occur)
+    Logger.log('Step 3: Testing Drive.Files.insert...');
+    const resource = {
+      title: 'TEST_' + filename + '_' + Date.now(),
+      mimeType: MimeType.GOOGLE_SHEETS
+    };
+    
+    const file = Drive.Files.insert(resource, blob);
+    const tempFileId = file.id;
+    Logger.log('✓ Temp file created: ' + tempFileId);
+    
+    // Step 4: Cleanup
+    Logger.log('Step 4: Cleaning up temp file...');
+    Drive.Files.remove(tempFileId);
+    Logger.log('✓ Temp file deleted');
+    
+    return {
+      success: true,
+      message: 'File conversion test passed',
+      steps: {
+        base64Decode: 'OK (' + bytes.length + ' bytes)',
+        blobCreate: 'OK (' + blob.getSize() + ' bytes)',
+        driveInsert: 'OK',
+        cleanup: 'OK'
+      }
+    };
+  } catch (e) {
+    Logger.log('✗ File conversion error: ' + e.message);
+    Logger.log('Stack: ' + e.stack);
+    
+    return {
+      success: false,
+      error: 'File conversion failed: ' + e.message,
+      stack: e.stack,
+      solution: 'Check Drive API is enabled and user has permission'
+    };
+  }
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+function getTodayString() {
+  var today = new Date();
+  return Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function getTodayMinusMonths(months) {
+  var date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function getUserInfo() {
+  try {
+    const user = Session.getActiveUser();
+    return {
+      email: user.getEmail(),
+      name: user.getName() || 'User',
+      success: true
+    };
+  } catch (error) {
+    return {
+      email: 'guest@example.com',
+      name: 'Guest',
+      success: true
+    };
+  }
+}
