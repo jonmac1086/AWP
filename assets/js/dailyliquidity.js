@@ -244,151 +244,171 @@
         }, 3500);
     }
 
-// uploadToTrialBalance - uses form+iframe but listens for postMessage from iframe
-function uploadToTrialBalance(weekEnding, fileData) {
-  if (isLoading) return;
-
-  showLoadingModal('Uploading Excel to Trial Balance...');
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const dataUrl = e.target.result;
-      const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1) ? dataUrl.split(',')[1] : dataUrl;
-
-      console.log('Uploading file:', fileData.name);
-      console.log('Base64 length:', base64 ? base64.length : 0);
-      console.log('Week Ending:', weekEnding);
-
-      // Build payload
-      const payload = {
-        base64: base64,
-        filename: fileData.name,
-        weekEnding: weekEnding
-      };
-
-      // Create hidden form
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.target = 'uploadFrame';
-      form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-      form.style.display = 'none';
-
-      const actionField = document.createElement('input');
-      actionField.type = 'hidden';
-      actionField.name = 'action';
-      actionField.value = 'uploadExcelToTrialBalance';
-      form.appendChild(actionField);
-
-      const dataField = document.createElement('input');
-      dataField.type = 'hidden';
-      dataField.name = 'formData';
-      dataField.value = JSON.stringify(payload);
-      form.appendChild(dataField);
-
-      document.body.appendChild(form);
-
-      // Create iframe
-      let iframe = document.getElementById('uploadFrame');
-      if (iframe && iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-        iframe = null;
-      }
-      iframe = document.createElement('iframe');
-      iframe.name = 'uploadFrame';
-      iframe.id = 'uploadFrame';
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-
-      // Setup a one-time message listener
-      const MESSAGE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
-      let handled = false;
-      const timeoutId = setTimeout(() => {
-        if (!handled) {
-          handled = true;
-          cleanup();
-          hideLoadingModal();
-          showToast('❌ Upload timed out. Please try again.', 'error');
-        }
-      }, MESSAGE_TIMEOUT);
-
-      function messageHandler(event) {
-        try {
-          // Optionally validate event.origin here (recommended in production).
-          // For example: if (event.origin.indexOf('script.googleusercontent.com') === -1) return;
-          const response = event.data;
-          if (!response || (typeof response !== 'object')) {
-            // Not our response; ignore
-            return;
-          }
-
-          // Only handle messages that look like our upload response
-          if (response.success === undefined && response.error === undefined && response.message === undefined) {
-            // not our upload response
-            return;
-          }
-
-          if (handled) return;
-          handled = true;
-          clearTimeout(timeoutId);
-
-          // Process response
-          handleUploadResponse(response);
-
-        } catch (err) {
-          console.error('Error in messageHandler:', err);
-          if (!handled) {
-            handled = true;
-            clearTimeout(timeoutId);
-            hideLoadingModal();
-            showToast('❌ Upload failed (message handling error)', 'error');
-          }
-        } finally {
-          cleanup();
-        }
-      }
-
-      window.addEventListener('message', messageHandler, false);
-
-      function cleanup() {
-        try { window.removeEventListener('message', messageHandler, false); } catch(e){}
-        try { if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch(e){}
-        try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-      }
-
-      // Submit the form (this loads the iframe; the server's response HTML will postMessage to parent)
-      form.submit();
-
-    } catch (err) {
-      hideLoadingModal();
-      console.error('File processing error:', err);
-      showToast('❌ File processing error: ' + (err.message || err), 'error');
+    // ---------- UPLOAD STATUS HELPERS ----------
+    function setUploadProgress(message) {
+        const statusIcon = document.getElementById('uploadStatusIcon');
+        const statusMessage = document.getElementById('uploadStatusMessage');
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        if (statusMessage) statusMessage.textContent = message || 'Uploading to Trial Balance...';
     }
-  };
 
-  reader.onerror = function() {
-    hideLoadingModal();
-    showToast('❌ Error reading file', 'error');
-  };
+    function setUploadSuccess(message) {
+        const statusIcon = document.getElementById('uploadStatusIcon');
+        const statusMessage = document.getElementById('uploadStatusMessage');
+        const confirmBtn = document.getElementById('uploadConfirmBtn');
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color:#16a34a;"></i>';
+        if (statusMessage) statusMessage.textContent = message || 'Upload successful';
+        if (confirmBtn) confirmBtn.disabled = false;
+        // Close modal shortly after success
+        setTimeout(() => {
+            closeUploadModal();
+        }, 1200);
+    }
 
-  reader.readAsDataURL(fileData);
-}
+    function setUploadFailure(message) {
+        const statusIcon = document.getElementById('uploadStatusIcon');
+        const statusMessage = document.getElementById('uploadStatusMessage');
+        const confirmBtn = document.getElementById('uploadConfirmBtn');
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;"></i>';
+        if (statusMessage) statusMessage.textContent = message || 'Upload failed';
+        if (confirmBtn) confirmBtn.disabled = false;
+    }
+
+    // ============================================
+    // UPLOAD FUNCTION - Using form POST with iframe
+    // (RELIABLE for large base64 payloads)
+    // NOTE: DO NOT show the global loading modal here; rely on the upload modal status.
+    // ============================================
+    function uploadToTrialBalance(weekEnding, fileData) {
+        if (isLoading) return;
+        // Do NOT call showLoadingModal here to avoid the global modal showing behind the upload modal.
+        setUploadProgress('Uploading to Trial Balance...');
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const dataUrl = e.target.result;
+                const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1) ? dataUrl.split(',')[1] : dataUrl;
+                
+                console.log('Uploading file:', fileData.name);
+                console.log('Base64 length:', base64 ? base64.length : 0);
+                console.log('Week Ending:', weekEnding);
+                
+                // Build payload
+                const payload = {
+                  base64: base64,
+                  filename: fileData.name,
+                  weekEnding: weekEnding
+                };
+
+                // Create hidden form and iframe
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.target = 'uploadFrame';
+                form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
+                form.style.display = 'none';
+                form.enctype = 'application/x-www-form-urlencoded';
+
+                const actionField = document.createElement('input');
+                actionField.type = 'hidden';
+                actionField.name = 'action';
+                actionField.value = 'uploadExcelToTrialBalance';
+                form.appendChild(actionField);
+                
+                const dataField = document.createElement('input');
+                dataField.type = 'hidden';
+                dataField.name = 'formData';
+                dataField.value = JSON.stringify(payload);
+                form.appendChild(dataField);
+
+                document.body.appendChild(form);
+
+                // Remove any previous iframe then create a new one
+                let existingIframe = document.getElementById('uploadFrame');
+                if (existingIframe && existingIframe.parentNode) {
+                    existingIframe.parentNode.removeChild(existingIframe);
+                }
+                const iframe = document.createElement('iframe');
+                iframe.name = 'uploadFrame';
+                iframe.id = 'uploadFrame';
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+
+                // Setup a one-time message listener for postMessage from server iframe
+                const MESSAGE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
+                let handled = false;
+                const timeoutId = setTimeout(() => {
+                    if (!handled) {
+                        handled = true;
+                        setUploadFailure('Upload timed out. Please try again.');
+                    }
+                }, MESSAGE_TIMEOUT);
+
+                function messageHandler(event) {
+                    try {
+                        // Optionally validate origin:
+                        // if (event.origin.indexOf('script.google') === -1 && event.origin.indexOf('script.googleusercontent') === -1) return;
+                        const response = event.data;
+                        if (!response || (typeof response !== 'object')) {
+                            return;
+                        }
+                        if (response.success === undefined && response.error === undefined && response.message === undefined) {
+                            return;
+                        }
+                        if (handled) return;
+                        handled = true;
+                        clearTimeout(timeoutId);
+                        handleUploadResponse(response);
+                    } catch (err) {
+                        console.error('Error in messageHandler:', err);
+                        if (!handled) {
+                            handled = true;
+                            clearTimeout(timeoutId);
+                            setUploadFailure('Upload failed (message handling error)');
+                        }
+                    } finally {
+                        cleanup();
+                    }
+                }
+
+                function cleanup() {
+                    try { window.removeEventListener('message', messageHandler, false); } catch(e){}
+                    try { if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch(e){}
+                    try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
+                }
+
+                window.addEventListener('message', messageHandler, false);
+
+                // Submit the form (server should reply with an HTML page that calls window.parent.postMessage)
+                form.submit();
+
+            } catch (err) {
+                console.error('File processing error:', err);
+                setUploadFailure('File processing error: ' + (err.message || err));
+            }
+        };
+        
+        reader.onerror = function() {
+            setUploadFailure('Error reading file');
+        };
+        
+        reader.readAsDataURL(fileData);
+    }
 
     // Handle upload response
     function handleUploadResponse(response) {
-        hideLoadingModal();
+        // Do NOT call hideLoadingModal() — we rely on the upload modal status area.
         console.log('Upload response:', response);
         
         if (response && response.success !== false) {
             const message = response.message || response.result || 'Upload successful';
-            showToast('✅ ' + message, 'success');
-            closeUploadModal();
+            setUploadSuccess('✅ ' + message);
             if (response.rowsImported) {
                 showToast('Rows imported: ' + response.rowsImported, 'info');
             }
         } else {
             const errorMsg = response?.error || response?.message || 'Unknown error';
-            showToast('❌ Upload failed: ' + errorMsg, 'error');
+            setUploadFailure('❌ Upload failed: ' + errorMsg);
         }
     }
 
@@ -536,11 +556,11 @@ function uploadToTrialBalance(weekEnding, fileData) {
                     return;
                 }
 
-                // Show status
+                // Show status inside upload modal (do not use global loading modal)
                 statusDiv.style.display = 'flex';
-                statusIcon.className = 'upload-status-icon';
-                statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                statusMessage.textContent = 'Uploading to Trial Balance...';
+                if (statusIcon) statusIcon.className = 'upload-status-icon';
+                if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                if (statusMessage) statusMessage.textContent = 'Uploading to Trial Balance...';
                 confirmBtn.disabled = true;
 
                 // Upload to Trial Balance (uses form POST/iframe)
