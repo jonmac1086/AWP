@@ -185,8 +185,8 @@ window.API.renewSubscription = function(subscriptionCode, newExpiryDate, newAnnu
 // ============================================
 // DAILY LIQUIDITY API
 // ============================================
-window.API.uploadExcelToTrialBalance = function(data, options = {}) {
-  return window.DailyLiquidityApi.uploadExcelToTrialBalance(data, options);
+window.API.uploadExcelToTrialBalance = function(base64, filename, weekEnding, options = {}) {
+  return window.DailyLiquidityApi.uploadExcelToTrialBalance(base64, filename, weekEnding, options);
 };
 
 window.API.importLiquidityFromTrialBalance = function(weekEnding, options = {}) {
@@ -289,6 +289,13 @@ window.callGAS = async function(action, data = {}) {
     'getSubscriptionsByDateRange': () => window.API.getSubscriptionsByDateRange(data.fromDate, data.toDate),
     'getExpiredSubscriptions': () => window.API.getExpiredSubscriptions(data.asOfDate),
     'renewSubscription': () => window.API.renewSubscription(data.subscriptionCode, data.newExpiryDate, data.newAnnualCost),
+    // Liquidity methods
+    'uploadExcelToTrialBalance': () => window.API.uploadExcelToTrialBalance(data.base64, data.filename, data.weekEnding),
+    'importLiquidityFromTrialBalance': () => window.API.importLiquidityFromTrialBalance(data.weekEnding),
+    'saveLiquidityData': () => window.API.saveLiquidityData(data),
+    'loadLiquidityData': () => window.API.loadLiquidityData(data.weekEnding),
+    'getAvailableWeekEndings': () => window.API.getAvailableWeekEndings(),
+    'deleteLiquidityData': () => window.API.deleteLiquidityData(data.weekEnding),
     'test': () => window.API.request('test', {})
   };
   
