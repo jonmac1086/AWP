@@ -273,140 +273,137 @@
         if (confirmBtn) confirmBtn.disabled = false;
     }
 
-    // ============================================
-    // UPLOAD FUNCTION - iframe + postMessage (robust)
-    // ============================================
-    function uploadToTrialBalance(weekEnding, fileData) {
-        const confirmBtn = document.getElementById('uploadConfirmBtn');
-        setUploadProgress('Uploading to Trial Balance...');
+    // uploadToTrialBalance - iframe + postMessage (relaxed source check, strict origin + uploadId)
+function uploadToTrialBalance(weekEnding, fileData) {
+  const confirmBtn = document.getElementById('uploadConfirmBtn');
+  setUploadProgress('Uploading to Trial Balance...');
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const dataUrl = e.target.result;
-                const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
-                    ? dataUrl.split(',')[1]
-                    : dataUrl;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const dataUrl = e.target.result;
+      const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
+        ? dataUrl.split(',')[1]
+        : dataUrl;
 
-                const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
+      const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
 
-                const payload = {
-                    base64: base64,
-                    filename: fileData.name,
-                    weekEnding: weekEnding,
-                    uploadId: uploadId
-                };
+      const payload = {
+        base64: base64,
+        filename: fileData.name,
+        weekEnding: weekEnding,
+        uploadId: uploadId
+      };
 
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.target = 'uploadFrame_' + uploadId;
-                form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-                form.style.display = 'none';
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.target = 'uploadFrame_' + uploadId;
+      form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
+      form.style.display = 'none';
 
-                const actionField = document.createElement('input');
-                actionField.type = 'hidden';
-                actionField.name = 'action';
-                actionField.value = 'uploadExcelToTrialBalance';
-                form.appendChild(actionField);
+      const actionField = document.createElement('input');
+      actionField.type = 'hidden';
+      actionField.name = 'action';
+      actionField.value = 'uploadExcelToTrialBalance';
+      form.appendChild(actionField);
 
-                const dataField = document.createElement('input');
-                dataField.type = 'hidden';
-                dataField.name = 'formData';
-                dataField.value = JSON.stringify(payload);
-                form.appendChild(dataField);
+      const dataField = document.createElement('input');
+      dataField.type = 'hidden';
+      dataField.name = 'formData';
+      dataField.value = JSON.stringify(payload);
+      form.appendChild(dataField);
 
-                document.body.appendChild(form);
+      document.body.appendChild(form);
 
-                const iframeId = 'uploadFrame_' + uploadId;
-                const prior = document.getElementById(iframeId);
-                if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+      const iframeId = 'uploadFrame_' + uploadId;
+      const prior = document.getElementById(iframeId);
+      if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
 
-                const iframe = document.createElement('iframe');
-                iframe.name = iframeId;
-                iframe.id = iframeId;
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
+      const iframe = document.createElement('iframe');
+      iframe.name = iframeId;
+      iframe.id = iframeId;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
 
-                // Accept messages only from Google's script origins (allow subdomains)
-                const allowedOriginSuffixes = [
-                    'script.google.com',
-                    'script.googleusercontent.com'
-                ];
+      // Accept messages only from Google script origins (allow subdomains)
+      // e.g. script.google.com and *.script.googleusercontent.com
+      const allowedOriginSuffixes = [
+        'script.google.com',
+        'script.googleusercontent.com'
+      ];
 
-                let handled = false;
-                const TIMEOUT_MS = 2 * 60 * 1000;
-                const timeoutId = setTimeout(() => {
-                    if (!handled) {
-                        handled = true;
-                        setUploadFailure('Upload timed out. Please try again.');
-                        cleanup();
-                    }
-                }, TIMEOUT_MS);
+      let handled = false;
+      const TIMEOUT_MS = 2 * 60 * 1000;
+      const timeoutId = setTimeout(() => {
+        if (!handled) {
+          handled = true;
+          setUploadFailure('Upload timed out. Please try again.');
+          cleanup();
+        }
+      }, TIMEOUT_MS);
 
-                function messageHandler(event) {
-                    try {
-                        if (!event || !event.data || typeof event.data !== 'object') return;
-                        if (event.data.uploadId !== uploadId) return;
+      function messageHandler(event) {
+        try {
+          // Debugging (remove in production if noisy)
+          console.debug('postMessage received', event.origin, event.data);
 
-                        // Validate origin by suffix match
-                        const originAllowed = allowedOriginSuffixes.some(suffix => event.origin.indexOf(suffix) !== -1);
-                        if (!originAllowed) {
-                            console.warn('Dropping message from unexpected origin:', event.origin);
-                            return;
-                        }
+          if (!event || !event.data || typeof event.data !== 'object') return;
 
-                        const iframeEl = document.getElementById(iframeId);
-                        if (!iframeEl) return;
-                        if (event.source !== iframeEl.contentWindow) {
-                            console.warn('Dropping postMessage — source mismatch');
-                            return;
-                        }
+          // Must be our uploadId
+          if (event.data.uploadId !== uploadId) return;
 
-                        if (handled) return;
-                        handled = true;
-                        clearTimeout(timeoutId);
+          // Validate origin by suffix match (accept script.google.com and script.googleusercontent.com subdomains)
+          const originAllowed = allowedOriginSuffixes.some(suffix => event.origin.indexOf(suffix) !== -1);
+          if (!originAllowed) {
+            console.warn('Dropping message from unexpected origin:', event.origin);
+            return;
+          }
 
-                        const response = event.data.result || {};
-                        handleUploadResponse(response);
+          // NOTE: we DO NOT require event.source === iframe.contentWindow due to Google's wrapping frames.
+          // We still ensure uploadId matches and origin is allowed, which prevents external spoofing.
 
-                    } catch (err) {
-                        console.error('messageHandler error:', err);
-                        if (!handled) {
-                            handled = true;
-                            setUploadFailure('Upload failed (message handling error).');
-                        }
-                    } finally {
-                        cleanup();
-                    }
-                }
+          if (handled) return;
+          handled = true;
+          clearTimeout(timeoutId);
 
-                function cleanup() {
-                    try { window.removeEventListener('message', messageHandler, false); } catch(e){}
-                    try { const f = document.getElementById(iframeId); if (f && f.parentNode) f.parentNode.removeChild(f); } catch(e){}
-                    try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-                    if (confirmBtn) confirmBtn.disabled = false;
-                }
+          const response = event.data.result || {};
+          handleUploadResponse(response);
 
-                window.addEventListener('message', messageHandler, false);
+        } catch (err) {
+          console.error('messageHandler error:', err);
+          if (!handled) {
+            handled = true;
+            setUploadFailure('Upload failed (message handling error).');
+          }
+        } finally {
+          cleanup();
+        }
+      }
 
-                // Submit form (server will return HTML that posts the result)
-                form.submit();
+      function cleanup() {
+        try { window.removeEventListener('message', messageHandler, false); } catch(e){}
+        try { const f = document.getElementById(iframeId); if (f && f.parentNode) f.parentNode.removeChild(f); } catch(e){}
+        try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
+        if (confirmBtn) confirmBtn.disabled = false;
+      }
 
-            } catch (err) {
-                console.error('File processing error:', err);
-                setUploadFailure('File processing error: ' + (err.message || err));
-                if (confirmBtn) confirmBtn.disabled = false;
-            }
-        };
+      window.addEventListener('message', messageHandler, false);
+      form.submit();
 
-        reader.onerror = function() {
-            setUploadFailure('Error reading file');
-            if (confirmBtn) confirmBtn.disabled = false;
-        };
-
-        reader.readAsDataURL(fileData);
+    } catch (err) {
+      console.error('File processing error:', err);
+      setUploadFailure('File processing error: ' + (err.message || err));
+      if (confirmBtn) confirmBtn.disabled = false;
     }
+  };
 
+  reader.onerror = function() {
+    setUploadFailure('Error reading file');
+    if (confirmBtn) confirmBtn.disabled = false;
+  };
+
+  reader.readAsDataURL(fileData);
+}
     // Handle upload response (kept for backward compatibility)
     function handleUploadResponse(response) {
         console.log('Upload response:', response);
