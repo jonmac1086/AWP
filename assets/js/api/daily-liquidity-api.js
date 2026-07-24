@@ -8,12 +8,35 @@ class DailyLiquidityApi extends ApiService {
   }
 
   // ============================================
-  // DAILY LIQUIDITY API
+  // UPLOAD EXCEL TO TRIAL BALANCE
   // ============================================
+  
+  async uploadExcelToTrialBalance(base64, filename, weekEnding, options = {}) {
+    this.log('uploadExcelToTrialBalance called');
+    this.log('Filename:', filename);
+    this.log('Week Ending:', weekEnding);
+    this.log('Base64 length:', base64 ? base64.length : 0);
+    
+    if (!base64 || base64.length === 0) {
+      throw new Error('No file data provided');
+    }
+    
+    // For large files, use the form POST method instead of JSONP
+    // The base64 string may be too long for URL parameters
+    return this.request('uploadExcelToTrialBalance', {
+      base64: base64,
+      filename: filename,
+      weekEnding: weekEnding
+    }, options);
+  }
 
-  async uploadExcelToTrialBalance(data, options = {}) {
-    this.log('uploadExcelToTrialBalance called with:', data);
-    return this.request('uploadExcelToTrialBalance', data, options);
+  // ============================================
+  // GET TRIAL BALANCE DATA
+  // ============================================
+  
+  async getTrialBalanceData(weekEnding, options = {}) {
+    this.log('getTrialBalanceData called for week ending:', weekEnding);
+    return this.request('getTrialBalanceData', { weekEnding }, options);
   }
 
   async importLiquidityFromTrialBalance(weekEnding, options = {}) {
