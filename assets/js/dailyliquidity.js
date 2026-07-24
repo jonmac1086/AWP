@@ -328,13 +328,18 @@
 
         // Set up message listener for the iframe response
         const messageHandler = function(event) {
-            // Check if the message is from our iframe
+            // Only handle messages from our iframe
             if (event.source !== iframe.contentWindow) return;
+            
+            // Check if the message is a response from our upload
+            if (!event.data || typeof event.data !== 'object') return;
+            if (event.data.uploadResult === undefined && !event.data.success && !event.data.error) return;
+            
             if (responseHandled) return;
             responseHandled = true;
             
             try {
-                const response = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                const response = event.data;
                 console.log('Upload response from iframe:', response);
                 
                 if (response && response.success !== false) {
@@ -408,8 +413,12 @@
         }, 120000);
 
         // Handle iframe load event
+        let loadCount = 0;
         iframe.onload = function() {
-            console.log('Iframe loaded - form submitted');
+            loadCount++;
+            if (loadCount === 1) {
+                console.log('Iframe loaded - form submitted');
+            }
         };
 
         // Submit the form
