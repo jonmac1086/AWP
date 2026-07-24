@@ -274,14 +274,15 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using fetch with FormData
+    // UPLOAD FUNCTION - Using JSONP (GET with callback)
+    // This bypasses CORS restrictions
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         const confirmBtn = document.getElementById('uploadConfirmBtn');
         setUploadProgress('Preparing file for upload...');
 
         const reader = new FileReader();
-        reader.onload = async function(e) {
+        reader.onload = function(e) {
             try {
                 const dataUrl = e.target.result;
                 const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
@@ -291,40 +292,85 @@
                 console.log('Uploading file:', fileData.name);
                 console.log('File size:', fileData.size, 'bytes');
                 console.log('Week ending:', weekEnding);
+                console.log('Base64 length:', base64.length);
+
+                // Create a unique callback name
+                const callbackName = 'liquidity_callback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 
-                // Create FormData for multipart/form-data upload
-                const formData = new FormData();
-                formData.append('action', 'uploadExcelToTrialBalance');
-                formData.append('base64', base64);
-                formData.append('filename', fileData.name);
-                formData.append('weekEnding', weekEnding);
+                // Build the URL with all parameters
+                const url = new URL(window.APP_CONFIG.API_URL);
+                url.searchParams.append('action', 'uploadExcelToTrialBalance');
+                url.searchParams.append('base64', base64);
+                url.searchParams.append('filename', fileData.name);
+                url.searchParams.append('weekEnding', weekEnding);
+                url.searchParams.append('callback', callbackName);
+
+                const fullUrl = url.toString();
+                console.log('Request URL length:', fullUrl.length);
+                
+                // Check if URL is too long (some browsers limit to ~2000 chars)
+                if (fullUrl.length > 1900) {
+                    setUploadFailure('❌ File too large for JSONP upload. Please use a smaller file.');
+                    if (confirmBtn) confirmBtn.disabled = false;
+                    return;
+                }
 
                 setUploadProgress('Uploading to Trial Balance sheet...');
 
-                // Use fetch to upload (POST)
-                const response = await fetch(window.APP_CONFIG.API_URL, {
-                    method: 'POST',
-                    body: formData,
-                    // No Content-Type header - browser sets it with boundary for FormData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                console.log('Upload response:', result);
-
-                if (result && result.success !== false) {
-                    const message = result.message || 'Upload successful';
-                    setUploadSuccess('✅ ' + message);
-                    if (result.rowsImported) {
-                        showToast('Rows imported: ' + result.rowsImported, 'info');
+                // Set up timeout (60 seconds for large files)
+                const timeoutId = setTimeout(() => {
+                    if (window[callbackName]) {
+                        delete window[callbackName];
+                        if (script && script.parentNode) {
+                            script.parentNode.removeChild(script);
+                        }
+                        setUploadFailure('❌ Upload timed out. Please try again.');
+                        if (confirmBtn) confirmBtn.disabled = false;
                     }
-                } else {
-                    const errorMsg = result?.error || result?.message || 'Unknown error';
-                    setUploadFailure('❌ Upload failed: ' + errorMsg);
-                }
+                }, 60000);
+
+                // Define the callback function
+                window[callbackName] = function(response) {
+                    clearTimeout(timeoutId);
+                    delete window[callbackName];
+                    
+                    if (script && script.parentNode) {
+                        script.parentNode.removeChild(script);
+                    }
+                    
+                    console.log('Upload response:', response);
+
+                    if (response && response.success !== false) {
+                        const message = response.message || 'Upload successful';
+                        setUploadSuccess('✅ ' + message);
+                        if (response.rowsImported) {
+                            showToast('Rows imported: ' + response.rowsImported, 'info');
+                        }
+                    } else {
+                        const errorMsg = response?.error || response?.message || 'Unknown error';
+                        setUploadFailure('❌ Upload failed: ' + errorMsg);
+                    }
+                    if (confirmBtn) confirmBtn.disabled = false;
+                };
+
+                // Create and inject the script tag
+                const script = document.createElement('script');
+                script.src = fullUrl;
+                script.type = 'text/javascript';
+                script.async = true;
+                
+                script.onerror = function() {
+                    clearTimeout(timeoutId);
+                    delete window[callbackName];
+                    if (script && script.parentNode) {
+                        script.parentNode.removeChild(script);
+                    }
+                    setUploadFailure('❌ Network error - failed to connect to server');
+                    if (confirmBtn) confirmBtn.disabled = false;
+                };
+
+                document.head.appendChild(script);
+                console.log('JSONP request sent');
 
             } catch (err) {
                 console.error('Upload failed:', err);
