@@ -246,17 +246,23 @@ window.API.clearCache = function(action = null) {
 
 // ============================================
 // BACKWARD COMPATIBILITY - callGAS function
+// Maintains all existing actions without modifying them
 // ============================================
 window.callGAS = async function(action, data = {}) {
   console.warn('callGAS is deprecated. Use API.[method] instead.');
   
   const actionMap = {
+    // User API
     'getUserInfo': () => window.API.getUserInfo(),
+    
+    // Payment Voucher API
     'processForm': () => window.API.processForm(data),
     'getNextPVNumber': () => window.API.getNextPVNumber(data.voucherType),
     'getPVNumbersByType': () => window.API.getPVNumbersByType(),
     'getVoucherByNumber': () => window.API.getVoucherByNumber(data.pvNumber, data.voucherType),
     'updateVoucher': () => window.API.updateVoucher(data),
+    
+    // Inventory API
     'generateInventoryCategoryCode': () => window.API.generateInventoryCategoryCode(),
     'getNextInventoryCode': () => window.API.getNextInventoryCode(data.mainCode),
     'getInventoryCategories': () => window.API.getInventoryCategories(),
@@ -266,12 +272,16 @@ window.callGAS = async function(action, data = {}) {
     'getInventoryListData': () => window.API.getInventoryListData(),
     'recordInventoryUsage': () => window.API.recordInventoryUsage(data),
     'removeInventory': () => window.API.removeInventory(data.inventoryCode),
+    
+    // Fixed Assets API
     'generateAssetCode': () => window.API.generateAssetCode(data.assetType),
     'addNewAsset': () => window.API.addNewAsset(data),
     'getDetailedRegister': () => window.API.getDetailedRegister(),
     'updateAssetStatus': () => window.API.updateAssetStatus(data.assetName, data.newStatus),
     'updateAllAccumulatedDepreciation': () => window.API.updateAllAccumulatedDepreciation(data.asOfDate),
     'getFixedAssetsSummaryReport': () => window.API.getFixedAssetsSummaryReport(data.toDate),
+    
+    // Investment API
     'generateInvestmentCode': () => window.API.generateInvestmentCode(data.investmentType),
     'addNewInvestment': () => window.API.addNewInvestment(data),
     'getInvestmentsByDateRange': () => window.API.getInvestmentsByDateRange(data.fromDate, data.toDate),
@@ -279,6 +289,10 @@ window.callGAS = async function(action, data = {}) {
     'getUniqueInvestmentTypes': () => window.API.getUniqueInvestmentTypes(),
     'getUniqueBanks': () => window.API.getUniqueBanks(),
     'getAllInvestments': () => window.API.getAllInvestments(),
+    'getInvestmentByCode': () => window.API.getInvestmentByCode(data.investmentCode),
+    'updateInvestmentRedeemDate': () => window.API.updateInvestmentRedeemDate(data.investmentCode, data.redeemDate),
+    
+    // Subscription API
     'generateSubscriptionCategoryCode': () => window.API.generateSubscriptionCategoryCode(),
     'getSubscriptionCategories': () => window.API.getSubscriptionCategories(),
     'getNextSubscriptionCode': () => window.API.getNextSubscriptionCode(data.categoryCode),
@@ -289,13 +303,16 @@ window.callGAS = async function(action, data = {}) {
     'getSubscriptionsByDateRange': () => window.API.getSubscriptionsByDateRange(data.fromDate, data.toDate),
     'getExpiredSubscriptions': () => window.API.getExpiredSubscriptions(data.asOfDate),
     'renewSubscription': () => window.API.renewSubscription(data.subscriptionCode, data.newExpiryDate, data.newAnnualCost),
-    // Liquidity methods
+    
+    // Daily Liquidity API
     'uploadExcelToTrialBalance': () => window.API.uploadExcelToTrialBalance(data.base64, data.filename, data.weekEnding),
     'importLiquidityFromTrialBalance': () => window.API.importLiquidityFromTrialBalance(data.weekEnding),
     'saveLiquidityData': () => window.API.saveLiquidityData(data),
     'loadLiquidityData': () => window.API.loadLiquidityData(data.weekEnding),
     'getAvailableWeekEndings': () => window.API.getAvailableWeekEndings(),
     'deleteLiquidityData': () => window.API.deleteLiquidityData(data.weekEnding),
+    
+    // Test
     'test': () => window.API.request('test', {})
   };
   
