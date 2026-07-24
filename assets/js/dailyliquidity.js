@@ -38,6 +38,7 @@
     let currentData = [];
     let isLoading = false;
     let selectedFile = null;
+    let isUploading = false;
 
     // ---------- GET WEEK DATES ----------
     function getWeekDatesFromEnding(weekEndingDate) {
@@ -165,25 +166,6 @@
         currentData = data;
     }
 
-    // ---------- LOADING MODAL ----------
-    function showLoadingModal(message) {
-        const modal = document.getElementById('loadingModal');
-        const msg = document.getElementById('loadingMessage');
-        if (modal) {
-            modal.style.display = 'flex';
-            if (msg) msg.textContent = message || 'Loading data...';
-        }
-        isLoading = true;
-    }
-
-    function hideLoadingModal() {
-        const modal = document.getElementById('loadingModal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-        isLoading = false;
-    }
-
     // ---------- SET DEFAULT DATE ----------
     function setDefaultDate() {
         const today = new Date();
@@ -259,6 +241,7 @@
         if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color:#16a34a;"></i>';
         if (statusMessage) statusMessage.textContent = message || 'Upload successful';
         if (confirmBtn) confirmBtn.disabled = false;
+        isUploading = false;
         setTimeout(() => {
             closeUploadModal();
         }, 1500);
@@ -271,13 +254,20 @@
         if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;"></i>';
         if (statusMessage) statusMessage.textContent = message || 'Upload failed';
         if (confirmBtn) confirmBtn.disabled = false;
+        isUploading = false;
     }
 
     // ============================================
     // UPLOAD FUNCTION - Using iframe with form submission
-    // This bypasses CORS and handles large files
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
+        // Prevent duplicate uploads
+        if (isUploading) {
+            console.log('Upload already in progress');
+            return;
+        }
+        isUploading = true;
+
         const confirmBtn = document.getElementById('uploadConfirmBtn');
         setUploadProgress('Preparing file for upload...');
 
@@ -320,27 +310,28 @@
         filenameInput.value = fileData.name;
         form.appendChild(filenameInput);
 
-        // IMPORTANT: Use the actual file input with the file
-        // We need to use the file from the FileList
+        // Add the file using DataTransfer
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.name = 'file';
         
-        // Create a new FileList containing our file
-        // We can't set files property directly, so we use DataTransfer
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(fileData);
         fileInput.files = dataTransfer.files;
-        
         form.appendChild(fileInput);
 
         // Append form to body
         document.body.appendChild(form);
 
+        // Flag to track if we've already handled the response
+        let responseHandled = false;
+
         // Set up message listener for the iframe response
         const messageHandler = function(event) {
             // Check if the message is from our iframe
             if (event.source !== iframe.contentWindow) return;
+            if (responseHandled) return;
+            responseHandled = true;
             
             try {
                 const response = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
@@ -357,40 +348,68 @@
                     setUploadFailure('❌ Upload failed: ' + errorMsg);
                 }
                 
-                // Clean up
-                window.removeEventListener('message', messageHandler);
-                setTimeout(() => {
-                    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-                    if (form && form.parentNode) form.parentNode.removeChild(form);
-                }, 1000);
+                cleanup();
                 
             } catch (err) {
                 console.error('Error parsing iframe response:', err);
                 setUploadFailure('❌ Failed to parse server response');
-                window.removeEventListener('message', messageHandler);
-                setTimeout(() => {
-                    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-                    if (form && form.parentNode) form.parentNode.removeChild(form);
-                }, 1000);
+                cleanup();
             }
         };
+
+        // Also set a global callback as fallback
+        window.liquidityUploadCallback = function(response) {
+            if (responseHandled) return;
+            responseHandled = true;
+            
+            console.log('Upload response via callback:', response);
+            
+            if (response && response.success !== false) {
+                const message = response.message || 'Upload successful';
+                setUploadSuccess('✅ ' + message);
+                if (response.rowsImported) {
+                    showToast('Rows imported: ' + response.rowsImported, 'info');
+                }
+            } else {
+                const errorMsg = response?.error || response?.message || 'Unknown error';
+                setUploadFailure('❌ Upload failed: ' + errorMsg);
+            }
+            
+            cleanup();
+        };
+
+        // Cleanup function
+        function cleanup() {
+            window.removeEventListener('message', messageHandler);
+            delete window.liquidityUploadCallback;
+            clearTimeout(timeoutId);
+            setTimeout(() => {
+                if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                if (form && form.parentNode) form.parentNode.removeChild(form);
+            }, 1000);
+            isUploading = false;
+        }
 
         // Listen for messages from the iframe
         window.addEventListener('message', messageHandler);
 
         // Set timeout for the upload
         const timeoutId = setTimeout(() => {
-            window.removeEventListener('message', messageHandler);
-            if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-            if (form && form.parentNode) form.parentNode.removeChild(form);
-            setUploadFailure('❌ Upload timed out. Please try again.');
-            if (confirmBtn) confirmBtn.disabled = false;
-        }, 120000); // 2 minutes timeout for large files
+            if (!responseHandled) {
+                responseHandled = true;
+                window.removeEventListener('message', messageHandler);
+                delete window.liquidityUploadCallback;
+                if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                if (form && form.parentNode) form.parentNode.removeChild(form);
+                setUploadFailure('❌ Upload timed out. Please try again.');
+                if (confirmBtn) confirmBtn.disabled = false;
+                isUploading = false;
+            }
+        }, 120000);
 
-        // Handle iframe load event (for when the form submits)
+        // Handle iframe load event
         iframe.onload = function() {
-            // If we get here, the form was submitted
-            console.log('Form submitted to iframe');
+            console.log('Iframe loaded - form submitted');
         };
 
         // Submit the form
@@ -429,7 +448,7 @@
                 fileArea.style.display = 'block';
                 fileInfo.style.display = 'none';
                 fileInput.value = '';
-                // Reset status
+                isUploading = false;
                 const statusIcon = document.getElementById('uploadStatusIcon');
                 const statusMessage = document.getElementById('uploadStatusMessage');
                 if (statusIcon) statusIcon.innerHTML = '';
@@ -442,26 +461,23 @@
             statusDiv.style.display = 'none';
             confirmBtn.disabled = true;
             selectedFile = null;
-            // Reset status
+            isUploading = false;
             const statusIcon = document.getElementById('uploadStatusIcon');
             const statusMessage = document.getElementById('uploadStatusMessage');
             if (statusIcon) statusIcon.innerHTML = '';
             if (statusMessage) statusMessage.textContent = '';
         }
 
-        // Close modal functions
         if (closeBtn) closeBtn.addEventListener('click', closeUploadModal);
         if (cancelBtn) cancelBtn.addEventListener('click', closeUploadModal);
         if (overlay) overlay.addEventListener('click', closeUploadModal);
 
-        // Close on Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && modal.style.display === 'flex') {
                 closeUploadModal();
             }
         });
 
-        // File input change
         if (fileInput) {
             fileInput.addEventListener('change', function(e) {
                 e.stopPropagation();
@@ -471,7 +487,6 @@
             });
         }
 
-        // Click on file area triggers file input
         if (fileArea) {
             fileArea.addEventListener('click', function(e) {
                 if (e.target.tagName !== 'INPUT') {
@@ -479,7 +494,6 @@
                 }
             });
 
-            // Drag and drop
             fileArea.addEventListener('dragover', function(e) {
                 e.preventDefault();
                 this.classList.add('dragover');
@@ -499,9 +513,7 @@
             });
         }
 
-        // Handle file selection
         function handleFileSelect(file) {
-            // Check if it's an Excel file
             const validExtensions = ['.xlsx', '.xls', '.csv'];
             const fileExt = '.' + file.name.split('.').pop().toLowerCase();
             const isValidType = validExtensions.includes(fileExt);
@@ -519,7 +531,6 @@
             showToast('✅ File selected: ' + file.name, 'success');
         }
 
-        // Remove file
         if (fileRemove) {
             fileRemove.addEventListener('click', function() {
                 selectedFile = null;
@@ -530,9 +541,13 @@
             });
         }
 
-        // Confirm upload
         if (confirmBtn) {
             confirmBtn.addEventListener('click', function() {
+                if (isUploading) {
+                    showToast('⏳ Upload already in progress...', 'warning');
+                    return;
+                }
+
                 const weekEnding = (uploadWeekEnding && uploadWeekEnding.value) || document.getElementById('weekEndingDate').value;
                 
                 if (!weekEnding) {
@@ -545,11 +560,9 @@
                     return;
                 }
 
-                // Show status inside upload modal
                 statusDiv.style.display = 'flex';
                 confirmBtn.disabled = true;
 
-                // Upload to Trial Balance
                 uploadToTrialBalance(weekEnding, selectedFile);
             });
         }
@@ -571,7 +584,6 @@
         updateColumnHeadersWithDates(defaultDate);
         renderTable(EMPTY_ROWS);
         
-        // Setup Upload Modal
         setupUploadModal();
         
         const datePicker = document.getElementById('weekEndingDate');
