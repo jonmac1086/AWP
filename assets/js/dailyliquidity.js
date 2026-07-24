@@ -291,25 +291,21 @@
                 console.log('Uploading file:', fileData.name);
                 console.log('File size:', fileData.size, 'bytes');
                 console.log('Week ending:', weekEnding);
-
-                // Get the Trial Balance sheet ID from config
-                const sheetId = window.APP_CONFIG?.SHEETS?.TRIAL_BALANCE || '';
                 
                 // Create FormData for multipart/form-data upload
                 const formData = new FormData();
                 formData.append('action', 'uploadExcelToTrialBalance');
-                formData.append('weekEnding', weekEnding);
-                formData.append('sheetId', sheetId);
-                formData.append('filename', fileData.name);
                 formData.append('base64', base64);
+                formData.append('filename', fileData.name);
+                formData.append('weekEnding', weekEnding);
 
                 setUploadProgress('Uploading to Trial Balance sheet...');
 
-                // Use fetch to upload
+                // Use fetch to upload (POST)
                 const response = await fetch(window.APP_CONFIG.API_URL, {
                     method: 'POST',
                     body: formData,
-                    // No Content-Type header - browser will set it with boundary for FormData
+                    // No Content-Type header - browser sets it with boundary for FormData
                 });
 
                 if (!response.ok) {
@@ -324,9 +320,6 @@
                     setUploadSuccess('✅ ' + message);
                     if (result.rowsImported) {
                         showToast('Rows imported: ' + result.rowsImported, 'info');
-                    }
-                    if (result.data) {
-                        renderTable(result.data);
                     }
                 } else {
                     const errorMsg = result?.error || result?.message || 'Unknown error';
