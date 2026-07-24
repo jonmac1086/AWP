@@ -274,7 +274,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - iframe + postMessage (robust)
+    // UPLOAD FUNCTION - Using JSONP with chunking for large files
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         const confirmBtn = document.getElementById('uploadConfirmBtn');
@@ -288,107 +288,43 @@
                     ? dataUrl.split(',')[1]
                     : dataUrl;
 
-                const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
-
-                const payload = {
-                    base64: base64,
-                    filename: fileData.name,
-                    weekEnding: weekEnding,
-                    uploadId: uploadId
-                };
-
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.target = 'uploadFrame_' + uploadId;
-                form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-                form.style.display = 'none';
-
-                const actionField = document.createElement('input');
-                actionField.type = 'hidden';
-                actionField.name = 'action';
-                actionField.value = 'uploadExcelToTrialBalance';
-                form.appendChild(actionField);
-
-                const dataField = document.createElement('input');
-                dataField.type = 'hidden';
-                dataField.name = 'formData';
-                dataField.value = JSON.stringify(payload);
-                form.appendChild(dataField);
-
-                document.body.appendChild(form);
-
-                const iframeId = 'uploadFrame_' + uploadId;
-                const prior = document.getElementById(iframeId);
-                if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-
-                const iframe = document.createElement('iframe');
-                iframe.name = iframeId;
-                iframe.id = iframeId;
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-
-                // Accept messages only from Google's script origins (allow subdomains)
-                const allowedOriginSuffixes = [
-                    'script.google.com',
-                    'script.googleusercontent.com'
-                ];
-
-                let handled = false;
-                const TIMEOUT_MS = 2 * 60 * 1000;
-                const timeoutId = setTimeout(() => {
-                    if (!handled) {
-                        handled = true;
-                        setUploadFailure('Upload timed out. Please try again.');
-                        cleanup();
-                    }
-                }, TIMEOUT_MS);
-
-                function messageHandler(event) {
-                    try {
-                        // Debugging (remove in production if noisy)
-                        console.debug('postMessage received', event.origin, event.data);
-
-                        if (!event || !event.data || typeof event.data !== 'object') return;
-                        if (event.data.uploadId !== uploadId) return;
-
-                        // Validate origin by suffix match (accept script.google.com and script.googleusercontent.com subdomains)
-                        const originAllowed = allowedOriginSuffixes.some(suffix => event.origin.indexOf(suffix) !== -1);
-                        if (!originAllowed) {
-                            console.warn('Dropping message from unexpected origin:', event.origin);
-                            return;
-                        }
-
-                        // NOTE: We do NOT require event.source === iframe.contentWindow due to Google's wrapping frames.
-
-                        if (handled) return;
-                        handled = true;
-                        clearTimeout(timeoutId);
-
-                        const response = event.data.result || {};
-                        handleUploadResponse(response);
-
-                    } catch (err) {
-                        console.error('messageHandler error:', err);
-                        if (!handled) {
-                            handled = true;
-                            setUploadFailure('Upload failed (message handling error).');
-                        }
-                    } finally {
-                        cleanup();
-                    }
+                // Check if base64 is too large for JSONP URL
+                const estimatedUrlLength = 150 + base64.length;
+                const MAX_JSONP_LENGTH = 1800; // Conservative limit for URL length
+                
+                if (estimatedUrlLength > MAX_JSONP_LENGTH) {
+                    // For large files, use the iframe POST method
+                    uploadLargeFileViaPost(weekEnding, fileData, base64);
+                    return;
                 }
 
-                function cleanup() {
-                    try { window.removeEventListener('message', messageHandler, false); } catch(e){}
-                    try { const f = document.getElementById(iframeId); if (f && f.parentNode) f.parentNode.removeChild(f); } catch(e){}
-                    try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-                    if (confirmBtn) confirmBtn.disabled = false;
-                }
-
-                window.addEventListener('message', messageHandler, false);
-
-                // Submit form (server will return HTML that posts the result)
-                form.submit();
+                // For small files, use the API directly
+                window.DailyLiquidityApi.uploadExcelToTrialBalance(
+                    base64,
+                    fileData.name,
+                    weekEnding
+                )
+                .then(response => {
+                    console.log('Upload response:', response);
+                    if (response && response.success !== false) {
+                        const message = response.message || 'Upload successful';
+                        setUploadSuccess('✅ ' + message);
+                        if (response.rowsImported) {
+                            showToast('Rows imported: ' + response.rowsImported, 'info');
+                        }
+                        // Reload the data after successful upload
+                        setTimeout(() => {
+                            handleDateChange();
+                        }, 1000);
+                    } else {
+                        const errorMsg = response?.error || response?.message || 'Unknown error';
+                        setUploadFailure('❌ Upload failed: ' + errorMsg);
+                    }
+                })
+                .catch(error => {
+                    console.error('Upload error:', error);
+                    setUploadFailure('❌ Upload failed: ' + (error.message || 'Unknown error'));
+                });
 
             } catch (err) {
                 console.error('File processing error:', err);
@@ -403,6 +339,147 @@
         };
 
         reader.readAsDataURL(fileData);
+    }
+
+    // ============================================
+    // LARGE FILE UPLOAD VIA POST (using iframe)
+    // ============================================
+    function uploadLargeFileViaPost(weekEnding, fileData, base64) {
+        const confirmBtn = document.getElementById('uploadConfirmBtn');
+        const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
+
+        // Get the API URL
+        const apiUrl = window.APP_CONFIG && window.APP_CONFIG.API_URL 
+            ? window.APP_CONFIG.API_URL 
+            : (window.DailyLiquidityApi ? window.DailyLiquidityApi.BASE_URL : null);
+            
+        if (!apiUrl) {
+            setUploadFailure('API URL not configured');
+            if (confirmBtn) confirmBtn.disabled = false;
+            return;
+        }
+
+        // Create a form with the data
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.target = 'uploadFrame_' + uploadId;
+        form.action = apiUrl;
+        form.style.display = 'none';
+
+        // Add action field
+        const actionField = document.createElement('input');
+        actionField.type = 'hidden';
+        actionField.name = 'action';
+        actionField.value = 'uploadExcelToTrialBalance';
+        form.appendChild(actionField);
+
+        // Add data fields
+        const payload = {
+            base64: base64,
+            filename: fileData.name,
+            weekEnding: weekEnding,
+            uploadId: uploadId
+        };
+
+        const dataField = document.createElement('input');
+        dataField.type = 'hidden';
+        dataField.name = 'data';
+        dataField.value = JSON.stringify(payload);
+        form.appendChild(dataField);
+
+        // Add a callback parameter for postMessage
+        const callbackField = document.createElement('input');
+        callbackField.type = 'hidden';
+        callbackField.name = 'callback';
+        callbackField.value = 'postMessage';
+        form.appendChild(callbackField);
+
+        document.body.appendChild(form);
+
+        // Create iframe
+        const iframeId = 'uploadFrame_' + uploadId;
+        const prior = document.getElementById(iframeId);
+        if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+
+        const iframe = document.createElement('iframe');
+        iframe.name = iframeId;
+        iframe.id = iframeId;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        let handled = false;
+        const TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+        const timeoutId = setTimeout(() => {
+            if (!handled) {
+                handled = true;
+                setUploadFailure('Upload timed out. Please try again.');
+                cleanup();
+            }
+        }, TIMEOUT_MS);
+
+        function messageHandler(event) {
+            try {
+                if (!event || !event.data || typeof event.data !== 'object') return;
+                if (event.data.uploadId !== uploadId) return;
+
+                // Accept messages from Google Script origins
+                const origin = event.origin || '';
+                const allowed = origin.indexOf('script.google.com') !== -1 || 
+                              origin.indexOf('script.googleusercontent.com') !== -1;
+                if (!allowed) {
+                    console.warn('Dropping message from unexpected origin:', origin);
+                    return;
+                }
+
+                if (handled) return;
+                handled = true;
+                clearTimeout(timeoutId);
+
+                const response = event.data.result || event.data;
+                console.log('Upload response via postMessage:', response);
+                
+                if (response && response.success !== false) {
+                    const message = response.message || 'Upload successful';
+                    setUploadSuccess('✅ ' + message);
+                    if (response.rowsImported) {
+                        showToast('Rows imported: ' + response.rowsImported, 'info');
+                    }
+                    setTimeout(() => {
+                        handleDateChange();
+                    }, 1000);
+                } else {
+                    const errorMsg = response?.error || response?.message || 'Unknown error';
+                    setUploadFailure('❌ Upload failed: ' + errorMsg);
+                }
+                cleanup();
+
+            } catch (err) {
+                console.error('messageHandler error:', err);
+                if (!handled) {
+                    handled = true;
+                    setUploadFailure('Upload failed (message handling error).');
+                }
+                cleanup();
+            }
+        }
+
+        function cleanup() {
+            try { window.removeEventListener('message', messageHandler, false); } catch(e) {}
+            try { 
+                const f = document.getElementById(iframeId); 
+                if (f && f.parentNode) f.parentNode.removeChild(f); 
+            } catch(e) {}
+            try { 
+                if (form && form.parentNode) form.parentNode.removeChild(form); 
+            } catch(e) {}
+            if (confirmBtn) confirmBtn.disabled = false;
+        }
+
+        window.addEventListener('message', messageHandler, false);
+
+        // Submit the form
+        form.submit();
+        setUploadProgress('Uploading file (large)...');
     }
 
     // Handle upload response (kept for backward compatibility)
@@ -571,7 +648,7 @@
                 if (statusMessage) statusMessage.textContent = 'Uploading to Trial Balance...';
                 confirmBtn.disabled = true;
 
-                // Upload to Trial Balance (iframe + postMessage)
+                // Upload to Trial Balance
                 uploadToTrialBalance(weekEnding, selectedFile);
             });
         }
@@ -604,7 +681,7 @@
 
     // Expose functions for console/testing
     window.uploadLiquidityData = uploadToTrialBalance;
-    window.uploadToTrialBalance = uploadToTrialBalance; // exported so inline handlers can call it
+    window.uploadToTrialBalance = uploadToTrialBalance;
     window.renderLiquidityTable = renderTable;
     window.closeUploadModal = function() {
         const modal = document.getElementById('uploadModal');
