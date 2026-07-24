@@ -274,7 +274,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using iframe with hidden form
+    // UPLOAD FUNCTION - Using iframe with form submission
     // This bypasses CORS and handles large files
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
@@ -320,11 +320,18 @@
         filenameInput.value = fileData.name;
         form.appendChild(filenameInput);
 
-        // Add file input
+        // IMPORTANT: Use the actual file input with the file
+        // We need to use the file from the FileList
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.name = 'file';
-        fileInput.files = [fileData];
+        
+        // Create a new FileList containing our file
+        // We can't set files property directly, so we use DataTransfer
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(fileData);
+        fileInput.files = dataTransfer.files;
+        
         form.appendChild(fileInput);
 
         // Append form to body
