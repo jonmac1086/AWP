@@ -39,6 +39,7 @@
     let isLoading = false;
     let selectedFile = null;
     let isUploading = false;
+    let messageListenerActive = false;
 
     // ---------- GET WEEK DATES ----------
     function getWeekDatesFromEnding(weekEndingDate) {
@@ -279,6 +280,7 @@
         iframe.name = iframeId;
         iframe.id = iframeId;
         iframe.style.display = 'none';
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
         document.body.appendChild(iframe);
 
         // Create hidden form
@@ -325,17 +327,33 @@
 
         // Flag to track if we've already handled the response
         let responseHandled = false;
+        let messageListenerId = 'liquidity_upload_' + Date.now();
 
-        // Set up message listener for the iframe response
+        // Set up message listener for the iframe response - using a named function for easier removal
         const messageHandler = function(event) {
             // Only handle messages from our iframe
-            if (event.source !== iframe.contentWindow) return;
+            if (event.source !== iframe.contentWindow) {
+                return;
+            }
             
             // Check if the message is a response from our upload
-            if (!event.data || typeof event.data !== 'object') return;
-            if (event.data.uploadResult === undefined && !event.data.success && !event.data.error) return;
+            if (!event.data || typeof event.data !== 'object') {
+                return;
+            }
             
-            if (responseHandled) return;
+            // Look for our specific response markers
+            const isOurResponse = event.data.uploadResult === true || 
+                                  event.data.success !== undefined || 
+                                  event.data.error !== undefined ||
+                                  event.data.message !== undefined;
+            
+            if (!isOurResponse) {
+                return;
+            }
+            
+            if (responseHandled) {
+                return;
+            }
             responseHandled = true;
             
             try {
@@ -362,6 +380,23 @@
             }
         };
 
+        // Cleanup function
+        function cleanup() {
+            // Remove the message listener
+            window.removeEventListener('message', messageHandler);
+            // Remove the callback
+            delete window.liquidityUploadCallback;
+            // Clear timeout
+            clearTimeout(timeoutId);
+            // Remove iframe and form
+            setTimeout(() => {
+                if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                if (form && form.parentNode) form.parentNode.removeChild(form);
+            }, 1000);
+            isUploading = false;
+            messageListenerActive = false;
+        }
+
         // Also set a global callback as fallback
         window.liquidityUploadCallback = function(response) {
             if (responseHandled) return;
@@ -383,20 +418,9 @@
             cleanup();
         };
 
-        // Cleanup function
-        function cleanup() {
-            window.removeEventListener('message', messageHandler);
-            delete window.liquidityUploadCallback;
-            clearTimeout(timeoutId);
-            setTimeout(() => {
-                if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-                if (form && form.parentNode) form.parentNode.removeChild(form);
-            }, 1000);
-            isUploading = false;
-        }
-
         // Listen for messages from the iframe
         window.addEventListener('message', messageHandler);
+        messageListenerActive = true;
 
         // Set timeout for the upload
         const timeoutId = setTimeout(() => {
@@ -409,6 +433,7 @@
                 setUploadFailure('❌ Upload timed out. Please try again.');
                 if (confirmBtn) confirmBtn.disabled = false;
                 isUploading = false;
+                messageListenerActive = false;
             }
         }, 120000);
 
@@ -471,6 +496,12 @@
             confirmBtn.disabled = true;
             selectedFile = null;
             isUploading = false;
+            // Remove any lingering message listeners
+            if (messageListenerActive) {
+                window.removeEventListener('message', window.liquidityMessageHandler);
+                messageListenerActive = false;
+            }
+            delete window.liquidityUploadCallback;
             const statusIcon = document.getElementById('uploadStatusIcon');
             const statusMessage = document.getElementById('uploadStatusMessage');
             if (statusIcon) statusIcon.innerHTML = '';
