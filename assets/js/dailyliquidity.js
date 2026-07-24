@@ -275,14 +275,6 @@
         // Create a unique iframe ID
         const iframeId = 'upload_iframe_' + Date.now();
         
-        // Create hidden iframe
-        const iframe = document.createElement('iframe');
-        iframe.name = iframeId;
-        iframe.id = iframeId;
-        iframe.style.display = 'none';
-        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
-        document.body.appendChild(iframe);
-
         // Create hidden form
         const form = document.createElement('form');
         form.method = 'POST';
