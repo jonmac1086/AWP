@@ -274,83 +274,130 @@
         if (confirmBtn) confirmBtn.disabled = false;
     }
 
- // ============================================
-// UPLOAD FUNCTION - Using fetch + FormData (no iframe)
-// ============================================
+ // uploadToTrialBalance - form + iframe upload with postMessage result matching by uploadId
 function uploadToTrialBalance(weekEnding, fileData) {
-    const confirmBtn = document.getElementById('uploadConfirmBtn');
-    setUploadProgress('Uploading to Trial Balance...');
+  const confirmBtn = document.getElementById('uploadConfirmBtn');
+  setUploadProgress('Uploading to Trial Balance...');
 
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            const dataUrl = e.target.result;
-            const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
-                ? dataUrl.split(',')[1]
-                : dataUrl;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const dataUrl = e.target.result;
+      const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
+        ? dataUrl.split(',')[1]
+        : dataUrl;
 
-            console.log('Uploading file:', fileData.name);
-            console.log('Base64 length:', base64 ? base64.length : 0);
-            // NOTE: weekEnding logging removed per request
+      const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
+      const parentOrigin = window.location.origin || '*';
 
-            const payload = {
-                base64: base64,
-                filename: fileData.name,
-                weekEnding: weekEnding
-            };
+      // Build payload including uploadId and origin
+      const payload = {
+        base64: base64,
+        filename: fileData.name,
+        weekEnding: weekEnding,
+        uploadId: uploadId,
+        origin: parentOrigin
+      };
 
-            const form = new FormData();
-            form.append('action', 'uploadExcelToTrialBalance');
-            form.append('formData', JSON.stringify(payload));
+      // Create a hidden form
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.target = 'uploadFrame_' + uploadId;
+      form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
+      form.style.display = 'none';
 
-            // Timeout support
-            const controller = new AbortController();
-            const timeoutMs = 2 * 60 * 1000; // 2 minutes
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      // action field
+      const actionField = document.createElement('input');
+      actionField.type = 'hidden';
+      actionField.name = 'action';
+      actionField.value = 'uploadExcelToTrialBalance';
+      form.appendChild(actionField);
 
-            const resp = await fetch(window.APP_CONFIG.API_URL, {
-                method: 'POST',
-                body: form,
-                signal: controller.signal
-            });
+      // formData field (stringified JSON)
+      const dataField = document.createElement('input');
+      dataField.type = 'hidden';
+      dataField.name = 'formData';
+      dataField.value = JSON.stringify(payload);
+      form.appendChild(dataField);
 
-            clearTimeout(timeoutId);
+      document.body.appendChild(form);
 
-            const text = await resp.text();
-            let json;
-            try {
-                json = JSON.parse(text);
-            } catch (err) {
-                json = { success: false, message: text || 'Invalid server response' };
-            }
+      // Create iframe (unique id/name)
+      // remove any prior iframe with same id just in case
+      const iframeId = 'uploadFrame_' + uploadId;
+      const existing = document.getElementById(iframeId);
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
-            if (json && json.success !== false) {
-                setUploadSuccess('✅ ' + (json.message || 'Upload successful'));
-                if (json.rowsImported) {
-                    showToast('Rows imported: ' + json.rowsImported, 'info');
-                }
-            } else {
-                setUploadFailure('❌ Upload failed: ' + (json.error || json.message || 'Unknown error'));
-            }
-            if (confirmBtn) confirmBtn.disabled = false;
+      const iframe = document.createElement('iframe');
+      iframe.name = iframeId;
+      iframe.id = iframeId;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
 
-        } catch (err) {
-            console.error('Upload failed:', err);
-            if (err.name === 'AbortError') {
-                setUploadFailure('Upload timed out. Please try again.');
-            } else {
-                setUploadFailure('Upload failed: ' + (err.message || err));
-            }
-            if (confirmBtn) confirmBtn.disabled = false;
+      // Message handler - match uploadId
+      let handled = false;
+      const TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+      const timeoutId = setTimeout(() => {
+        if (!handled) {
+          handled = true;
+          setUploadFailure('Upload timed out. Please try again.');
+          cleanup();
         }
-    };
+      }, TIMEOUT_MS);
 
-    reader.onerror = function() {
-        setUploadFailure('Error reading file');
+      function messageHandler(event) {
+        try {
+          // Optionally validate origin; recommended in production:
+          // if (event.origin !== 'https://script.google.com' && event.origin.indexOf('script.googleusercontent') === -1) return;
+
+          const data = event.data;
+          if (!data || typeof data !== 'object') return;
+          if (data.uploadId !== uploadId) return; // not our upload
+
+          if (handled) return;
+          handled = true;
+          clearTimeout(timeoutId);
+
+          // The server sends the result inside data.result
+          const response = data.result || {};
+          // Use the same handler you already have
+          handleUploadResponse(response);
+        } catch (err) {
+          console.error('messageHandler error:', err);
+          if (!handled) {
+            handled = true;
+            setUploadFailure('Upload failed (message error).');
+          }
+        } finally {
+          cleanup();
+        }
+      }
+
+      function cleanup() {
+        try { window.removeEventListener('message', messageHandler, false); } catch (e) {}
+        try { const f = document.getElementById(iframeId); if (f && f.parentNode) f.parentNode.removeChild(f); } catch (e) {}
+        try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch (e) {}
         if (confirmBtn) confirmBtn.disabled = false;
-    };
+      }
 
-    reader.readAsDataURL(fileData);
+      window.addEventListener('message', messageHandler, false);
+
+      // Submit form (loads iframe; server HTML should postMessage back)
+      form.submit();
+
+    } catch (err) {
+      console.error('File processing error:', err);
+      setUploadFailure('File processing error: ' + (err.message || err));
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  };
+
+  reader.onerror = function() {
+    setUploadFailure('Error reading file');
+    if (confirmBtn) confirmBtn.disabled = false;
+  };
+
+  reader.readAsDataURL(fileData);
 }
     // Handle upload response
     function handleUploadResponse(response) {
