@@ -273,136 +273,175 @@
         if (confirmBtn) confirmBtn.disabled = false;
     }
 
-    // uploadToTrialBalance - iframe + postMessage (relaxed source check, strict origin + uploadId)
-function uploadToTrialBalance(weekEnding, fileData) {
-  const confirmBtn = document.getElementById('uploadConfirmBtn');
-  setUploadProgress('Uploading to Trial Balance...');
+/**
+ * Import Excel (base64) into Trial Balance sheet.
+ * Uses Drive.Files.insert when available; otherwise uses UrlFetchApp to call Drive API upload with convert=true.
+ */
+function importLiquidityExcelToSheet(base64, filename, weekEnding) {
+  try {
+    Logger.log('=== importLiquidityExcelToSheet START ===');
+    Logger.log('Filename: ' + filename);
+    Logger.log('Week Ending: ' + weekEnding);
+    Logger.log('Base64 length: ' + (base64 ? base64.length : 0));
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
+    if (!base64) {
+      throw new Error('No file data received');
+    }
+    if (base64.length === 0) {
+      throw new Error('File data is empty');
+    }
+
+    // Convert base64 to bytes and create blob
+    var bytes = Utilities.base64Decode(base64);
+    var blob = Utilities.newBlob(bytes, MimeType.MICROSOFT_EXCEL, filename);
+
+    // Attempt 1: If Advanced Drive Service is enabled, use Drive.Files.insert to convert
+    var tempSheetId;
     try {
-      const dataUrl = e.target.result;
-      const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
-        ? dataUrl.split(',')[1]
-        : dataUrl;
+      if (typeof Drive !== 'undefined' && Drive.Files && typeof Drive.Files.insert === 'function') {
+        Logger.log('Using Advanced Drive service (Drive.Files.insert) to create converted Sheet...');
+        var resource = {
+          title: 'Temp_Import_' + filename + '_' + Date.now(),
+          mimeType: MimeType.GOOGLE_SHEETS
+        };
+        var file = Drive.Files.insert(resource, blob);
+        tempSheetId = file && file.id;
+        Logger.log('Temp file created (advanced service): ' + tempSheetId);
+      } else {
+        throw new Error('Advanced Drive service not available');
+      }
+    } catch (driveErr) {
+      // Fallback: use Drive REST API via UrlFetchApp with OAuth token to upload & convert
+      Logger.log('Advanced Drive service not available or failed: ' + driveErr.message + ' — falling back to UrlFetch upload');
 
-      const uploadId = 'upl_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
+      var url = 'https://www.googleapis.com/upload/drive/v2/files?uploadType=multipart&convert=true';
+      var boundary = '-------314159265358979323846';
+      var delimiter = '\r\n--' + boundary + '\r\n';
+      var closeDelim = '\r\n--' + boundary + '--';
 
-      const payload = {
-        base64: base64,
-        filename: fileData.name,
-        weekEnding: weekEnding,
-        uploadId: uploadId
+      var metadata = {
+        title: 'Temp_Import_' + filename + '_' + Date.now(),
+        mimeType: MimeType.GOOGLE_SHEETS
       };
 
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.target = 'uploadFrame_' + uploadId;
-      form.action = window.APP_CONFIG && window.APP_CONFIG.API_URL ? window.APP_CONFIG.API_URL : '/';
-      form.style.display = 'none';
+      // Build multipart request body: JSON metadata + base64-encoded file (with 64-bit encoding header)
+      var multipartRequestBody =
+        delimiter +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) +
+        delimiter +
+        'Content-Type: ' + MimeType.MICROSOFT_EXCEL + '\r\n' +
+        'Content-Transfer-Encoding: base64\r\n\r\n' +
+        base64 +
+        closeDelim;
 
-      const actionField = document.createElement('input');
-      actionField.type = 'hidden';
-      actionField.name = 'action';
-      actionField.value = 'uploadExcelToTrialBalance';
-      form.appendChild(actionField);
+      var options = {
+        method: 'post',
+        contentType: 'multipart/related; boundary=' + boundary,
+        payload: multipartRequestBody,
+        headers: {
+          Authorization: 'Bearer ' + ScriptApp.getOAuthToken()
+        },
+        muteHttpExceptions: true
+      };
 
-      const dataField = document.createElement('input');
-      dataField.type = 'hidden';
-      dataField.name = 'formData';
-      dataField.value = JSON.stringify(payload);
-      form.appendChild(dataField);
+      var resp = UrlFetchApp.fetch(url, options);
+      var code = resp.getResponseCode();
+      var respText = resp.getContentText();
+      Logger.log('Drive upload response code: ' + code);
+      Logger.log('Drive upload response: ' + respText);
 
-      document.body.appendChild(form);
-
-      const iframeId = 'uploadFrame_' + uploadId;
-      const prior = document.getElementById(iframeId);
-      if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-
-      const iframe = document.createElement('iframe');
-      iframe.name = iframeId;
-      iframe.id = iframeId;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-
-      // Accept messages only from Google script origins (allow subdomains)
-      // e.g. script.google.com and *.script.googleusercontent.com
-      const allowedOriginSuffixes = [
-        'script.google.com',
-        'script.googleusercontent.com'
-      ];
-
-      let handled = false;
-      const TIMEOUT_MS = 2 * 60 * 1000;
-      const timeoutId = setTimeout(() => {
-        if (!handled) {
-          handled = true;
-          setUploadFailure('Upload timed out. Please try again.');
-          cleanup();
-        }
-      }, TIMEOUT_MS);
-
-      function messageHandler(event) {
-        try {
-          // Debugging (remove in production if noisy)
-          console.debug('postMessage received', event.origin, event.data);
-
-          if (!event || !event.data || typeof event.data !== 'object') return;
-
-          // Must be our uploadId
-          if (event.data.uploadId !== uploadId) return;
-
-          // Validate origin by suffix match (accept script.google.com and script.googleusercontent.com subdomains)
-          const originAllowed = allowedOriginSuffixes.some(suffix => event.origin.indexOf(suffix) !== -1);
-          if (!originAllowed) {
-            console.warn('Dropping message from unexpected origin:', event.origin);
-            return;
-          }
-
-          // NOTE: we DO NOT require event.source === iframe.contentWindow due to Google's wrapping frames.
-          // We still ensure uploadId matches and origin is allowed, which prevents external spoofing.
-
-          if (handled) return;
-          handled = true;
-          clearTimeout(timeoutId);
-
-          const response = event.data.result || {};
-          handleUploadResponse(response);
-
-        } catch (err) {
-          console.error('messageHandler error:', err);
-          if (!handled) {
-            handled = true;
-            setUploadFailure('Upload failed (message handling error).');
-          }
-        } finally {
-          cleanup();
-        }
+      if (code < 200 || code >= 300) {
+        throw new Error('Drive upload failed (HTTP ' + code + '): ' + respText);
       }
 
-      function cleanup() {
-        try { window.removeEventListener('message', messageHandler, false); } catch(e){}
-        try { const f = document.getElementById(iframeId); if (f && f.parentNode) f.parentNode.removeChild(f); } catch(e){}
-        try { if (form && form.parentNode) form.parentNode.removeChild(form); } catch(e){}
-        if (confirmBtn) confirmBtn.disabled = false;
-      }
-
-      window.addEventListener('message', messageHandler, false);
-      form.submit();
-
-    } catch (err) {
-      console.error('File processing error:', err);
-      setUploadFailure('File processing error: ' + (err.message || err));
-      if (confirmBtn) confirmBtn.disabled = false;
+      var respJson = JSON.parse(respText);
+      tempSheetId = respJson.id;
+      Logger.log('Temp file created (UrlFetch): ' + tempSheetId);
     }
-  };
 
-  reader.onerror = function() {
-    setUploadFailure('Error reading file');
-    if (confirmBtn) confirmBtn.disabled = false;
-  };
+    if (!tempSheetId) {
+      throw new Error('Failed to create temporary Google Sheet (no file id returned)');
+    }
 
-  reader.readAsDataURL(fileData);
+    // Open the newly created spreadsheet and read the first sheet's data
+    var tempFileSs = SpreadsheetApp.openById(tempSheetId);
+    var tempSheet = tempFileSs.getSheets()[0];
+    var tempData = tempSheet.getDataRange().getValues();
+
+    Logger.log('Rows imported from Excel: ' + tempData.length);
+    Logger.log('Columns: ' + (tempData[0] ? tempData[0].length : 0));
+
+    if (!tempData || tempData.length === 0) {
+      // Cleanup temp file
+      try { DriveApp.getFileById(tempSheetId).setTrashed(true); } catch(e){}
+      throw new Error('No data found in the Excel file');
+    }
+
+    // Open the target Trial Balance sheet
+    var targetSS = SpreadsheetApp.openById(LIQUIDITY_CONFIG.SHEET_ID);
+    var targetSheet = targetSS.getSheetByName(LIQUIDITY_CONFIG.SHEET_NAME);
+    if (!targetSheet) {
+      targetSheet = targetSS.insertSheet(LIQUIDITY_CONFIG.SHEET_NAME);
+    }
+
+    // Clear existing data and write the imported data
+    targetSheet.clearContents();
+    targetSheet.clearFormats();
+
+    var numRows = tempData.length;
+    var numCols = tempData[0].length;
+    targetSheet.getRange(1, 1, numRows, numCols).setValues(tempData);
+
+    // Format the sheet (call your existing formatter)
+    formatTrialBalanceSheet(targetSheet, numRows, numCols);
+
+    // Cleanup: delete temp file (try both Drive API and DriveApp)
+    try {
+      // Prefer DriveApp to remove
+      var tempFile = DriveApp.getFileById(tempSheetId);
+      if (tempFile) tempFile.setTrashed(true);
+      Logger.log('Temp file trashed: ' + tempSheetId);
+    } catch (cleanupErr) {
+      Logger.log('Could not delete temp file via DriveApp: ' + cleanupErr.message);
+      try {
+        if (typeof Drive !== 'undefined' && Drive.Files && typeof Drive.Files.remove === 'function') {
+          Drive.Files.remove(tempSheetId);
+          Logger.log('Temp file removed via Drive.Files.remove');
+        }
+      } catch (e) {
+        Logger.log('Could not delete temp file via Drive.Files.remove: ' + e.message);
+      }
+    }
+
+    // Save week ending meta
+    try {
+      var scriptProps = PropertiesService.getScriptProperties();
+      scriptProps.setProperty('lastLiquidityUploadWeekEnding', weekEnding || '');
+      scriptProps.setProperty('lastLiquidityUploadDate', new Date().toISOString());
+    } catch (e) {
+      Logger.log('Could not save script properties: ' + e.message);
+    }
+
+    Logger.log('=== importLiquidityExcelToSheet SUCCESS ===');
+
+    return {
+      success: true,
+      message: 'Excel file imported to Trial Balance successfully!',
+      rowsImported: numRows - 1,
+      weekEnding: weekEnding,
+      filename: filename
+    };
+
+  } catch (error) {
+    Logger.log('ERROR in importLiquidityExcelToSheet: ' + error.message);
+    Logger.log('Stack: ' + (error.stack || 'no stack'));
+    return {
+      success: false,
+      error: 'Failed to import Excel: ' + error.message,
+      stack: error.stack
+    };
+  }
 }
     // Handle upload response (kept for backward compatibility)
     function handleUploadResponse(response) {
