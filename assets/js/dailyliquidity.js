@@ -274,117 +274,122 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using JSONP (GET with callback)
-    // This bypasses CORS restrictions
+    // UPLOAD FUNCTION - Using iframe with hidden form
+    // This bypasses CORS and handles large files
     // ============================================
     function uploadToTrialBalance(weekEnding, fileData) {
         const confirmBtn = document.getElementById('uploadConfirmBtn');
         setUploadProgress('Preparing file for upload...');
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
+        // Create a unique iframe ID
+        const iframeId = 'upload_iframe_' + Date.now();
+        
+        // Create hidden iframe
+        const iframe = document.createElement('iframe');
+        iframe.name = iframeId;
+        iframe.id = iframeId;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        // Create hidden form
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = window.APP_CONFIG.API_URL;
+        form.target = iframeId;
+        form.enctype = 'multipart/form-data';
+        form.style.display = 'none';
+
+        // Add action field
+        const actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = 'uploadExcelToTrialBalance';
+        form.appendChild(actionInput);
+
+        // Add weekEnding field
+        const weekEndingInput = document.createElement('input');
+        weekEndingInput.type = 'hidden';
+        weekEndingInput.name = 'weekEnding';
+        weekEndingInput.value = weekEnding;
+        form.appendChild(weekEndingInput);
+
+        // Add filename field
+        const filenameInput = document.createElement('input');
+        filenameInput.type = 'hidden';
+        filenameInput.name = 'filename';
+        filenameInput.value = fileData.name;
+        form.appendChild(filenameInput);
+
+        // Add file input
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.name = 'file';
+        fileInput.files = [fileData];
+        form.appendChild(fileInput);
+
+        // Append form to body
+        document.body.appendChild(form);
+
+        // Set up message listener for the iframe response
+        const messageHandler = function(event) {
+            // Check if the message is from our iframe
+            if (event.source !== iframe.contentWindow) return;
+            
             try {
-                const dataUrl = e.target.result;
-                const base64 = (typeof dataUrl === 'string' && dataUrl.indexOf(',') !== -1)
-                    ? dataUrl.split(',')[1]
-                    : dataUrl;
-
-                console.log('Uploading file:', fileData.name);
-                console.log('File size:', fileData.size, 'bytes');
-                console.log('Week ending:', weekEnding);
-                console.log('Base64 length:', base64.length);
-
-                // Create a unique callback name
-                const callbackName = 'liquidity_callback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const response = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                console.log('Upload response from iframe:', response);
                 
-                // Build the URL with all parameters
-                const url = new URL(window.APP_CONFIG.API_URL);
-                url.searchParams.append('action', 'uploadExcelToTrialBalance');
-                url.searchParams.append('base64', base64);
-                url.searchParams.append('filename', fileData.name);
-                url.searchParams.append('weekEnding', weekEnding);
-                url.searchParams.append('callback', callbackName);
-
-                const fullUrl = url.toString();
-                console.log('Request URL length:', fullUrl.length);
-                
-                // Check if URL is too long (some browsers limit to ~2000 chars)
-                if (fullUrl.length > 1900) {
-                    setUploadFailure('❌ File too large for JSONP upload. Please use a smaller file.');
-                    if (confirmBtn) confirmBtn.disabled = false;
-                    return;
+                if (response && response.success !== false) {
+                    const message = response.message || 'Upload successful';
+                    setUploadSuccess('✅ ' + message);
+                    if (response.rowsImported) {
+                        showToast('Rows imported: ' + response.rowsImported, 'info');
+                    }
+                } else {
+                    const errorMsg = response?.error || response?.message || 'Unknown error';
+                    setUploadFailure('❌ Upload failed: ' + errorMsg);
                 }
-
-                setUploadProgress('Uploading to Trial Balance sheet...');
-
-                // Set up timeout (60 seconds for large files)
-                const timeoutId = setTimeout(() => {
-                    if (window[callbackName]) {
-                        delete window[callbackName];
-                        if (script && script.parentNode) {
-                            script.parentNode.removeChild(script);
-                        }
-                        setUploadFailure('❌ Upload timed out. Please try again.');
-                        if (confirmBtn) confirmBtn.disabled = false;
-                    }
-                }, 60000);
-
-                // Define the callback function
-                window[callbackName] = function(response) {
-                    clearTimeout(timeoutId);
-                    delete window[callbackName];
-                    
-                    if (script && script.parentNode) {
-                        script.parentNode.removeChild(script);
-                    }
-                    
-                    console.log('Upload response:', response);
-
-                    if (response && response.success !== false) {
-                        const message = response.message || 'Upload successful';
-                        setUploadSuccess('✅ ' + message);
-                        if (response.rowsImported) {
-                            showToast('Rows imported: ' + response.rowsImported, 'info');
-                        }
-                    } else {
-                        const errorMsg = response?.error || response?.message || 'Unknown error';
-                        setUploadFailure('❌ Upload failed: ' + errorMsg);
-                    }
-                    if (confirmBtn) confirmBtn.disabled = false;
-                };
-
-                // Create and inject the script tag
-                const script = document.createElement('script');
-                script.src = fullUrl;
-                script.type = 'text/javascript';
-                script.async = true;
                 
-                script.onerror = function() {
-                    clearTimeout(timeoutId);
-                    delete window[callbackName];
-                    if (script && script.parentNode) {
-                        script.parentNode.removeChild(script);
-                    }
-                    setUploadFailure('❌ Network error - failed to connect to server');
-                    if (confirmBtn) confirmBtn.disabled = false;
-                };
-
-                document.head.appendChild(script);
-                console.log('JSONP request sent');
-
+                // Clean up
+                window.removeEventListener('message', messageHandler);
+                setTimeout(() => {
+                    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                    if (form && form.parentNode) form.parentNode.removeChild(form);
+                }, 1000);
+                
             } catch (err) {
-                console.error('Upload failed:', err);
-                setUploadFailure('Upload failed: ' + (err.message || err));
-                if (confirmBtn) confirmBtn.disabled = false;
+                console.error('Error parsing iframe response:', err);
+                setUploadFailure('❌ Failed to parse server response');
+                window.removeEventListener('message', messageHandler);
+                setTimeout(() => {
+                    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                    if (form && form.parentNode) form.parentNode.removeChild(form);
+                }, 1000);
             }
         };
 
-        reader.onerror = function() {
-            setUploadFailure('Error reading file');
+        // Listen for messages from the iframe
+        window.addEventListener('message', messageHandler);
+
+        // Set timeout for the upload
+        const timeoutId = setTimeout(() => {
+            window.removeEventListener('message', messageHandler);
+            if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            if (form && form.parentNode) form.parentNode.removeChild(form);
+            setUploadFailure('❌ Upload timed out. Please try again.');
             if (confirmBtn) confirmBtn.disabled = false;
+        }, 120000); // 2 minutes timeout for large files
+
+        // Handle iframe load event (for when the form submits)
+        iframe.onload = function() {
+            // If we get here, the form was submitted
+            console.log('Form submitted to iframe');
         };
 
-        reader.readAsDataURL(fileData);
+        // Submit the form
+        setUploadProgress('Uploading to Trial Balance sheet...');
+        form.submit();
+        console.log('Form submitted via iframe');
     }
 
     // ---------- UPLOAD MODAL ----------
