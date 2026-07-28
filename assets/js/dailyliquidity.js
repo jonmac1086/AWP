@@ -288,7 +288,7 @@
 
                     // Get the API URL
                     const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                        'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec';
+                        'https://script.google.com/macros/s/AKfycby4-HEOB2dRbxoL9lwMr4idxIGzstLMJKQamZ7E6MHWjhIgxckEyBM6YNhKYRr2s3pC2g/exec';
 
                     console.log('Uploading to:', apiUrl);
                     console.log('Filename:', file.name);
