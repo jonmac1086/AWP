@@ -4,7 +4,7 @@
 
 window.APP_CONFIG = {
   // Make sure this matches your deployed Google Apps Script URL
-  API_URL: 'https://script.google.com/macros/s/AKfycbyh-69v4qQbQYFJp6ZeHmnr_vOLuzBgRYjf0F2YeWa0W3k2RC_OMeCnT9V-Wq6Yu5G3/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec',
   
   // Google Sheet IDs
   SHEETS: {
