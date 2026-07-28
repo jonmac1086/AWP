@@ -258,7 +258,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using FormData POST (matches testindex.html)
+    // UPLOAD FUNCTION - EXACTLY like testindex.html
     // ============================================
     async function uploadToTrialBalance(weekEnding, file) {
         // Prevent duplicate uploads
@@ -274,85 +274,87 @@
         try {
             setUploadProgress('Reading file...');
 
-            // Read file as base64 using FileReader (matches testindex.html)
-            const base64Data = await readFileAsBase64(file);
+            // Use FileReader - EXACTLY like testindex.html
+            const reader = new FileReader();
             
-            setUploadProgress('Uploading to Trial Balance sheet...');
+            reader.onload = async function(e) {
+                try {
+                    setUploadProgress('Uploading to Trial Balance sheet...');
 
-            // Create FormData - matches testindex.html exactly
-            const formData = new FormData();
-            formData.append('filename', file.name);
-            formData.append('mimeType', file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            formData.append('data', base64Data);
-            formData.append('weekEnding', weekEnding);
+                    // Create FormData - EXACTLY like testindex.html
+                    const form = new FormData();
+                    form.append("filename", file.name);
+                    form.append("mimeType", file.type);
+                    form.append("data", e.target.result.split(",")[1]);
+                    form.append("weekEnding", weekEnding);
 
-            // Get the API URL from config
-            const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec';
+                    // Get the API URL from config
+                    const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
+                        'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec';
 
-            console.log('Uploading to:', apiUrl);
-            console.log('Filename:', file.name);
-            console.log('Week Ending:', weekEnding);
+                    console.log('Uploading to:', apiUrl);
+                    console.log('Filename:', file.name);
+                    console.log('Week Ending:', weekEnding);
 
-            // Send POST request with FormData - NO mode: 'no-cors' (matches testindex.html)
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                body: formData
-                // IMPORTANT: Do NOT use mode: 'no-cors' - we need to read the response
-            });
+                    // Send POST request - EXACTLY like testindex.html
+                    const response = await fetch(apiUrl, {
+                        method: "POST",
+                        body: form
+                    });
 
-            console.log('Response status:', response.status);
+                    // Read response as text - EXACTLY like testindex.html
+                    const text = await response.text();
+                    console.log('Raw response:', text);
 
-            // Read response as text (matches testindex.html)
-            const text = await response.text();
-            console.log('Raw response:', text);
+                    // Try to parse as JSON
+                    let result;
+                    try {
+                        result = JSON.parse(text);
+                    } catch (parseErr) {
+                        result = { success: false, error: 'Invalid response: ' + text.substring(0, 100) };
+                    }
 
-            // Try to parse as JSON
-            let result;
-            try {
-                result = JSON.parse(text);
-            } catch (e) {
-                // If not JSON, use the text as the message
-                result = { success: false, error: 'Invalid response: ' + text.substring(0, 100) };
-            }
+                    console.log('Parsed result:', result);
 
-            console.log('Parsed result:', result);
+                    if (result && result.success !== false) {
+                        const message = result.message || 'Upload successful';
+                        const rowsImported = result.rowsImported || result.rows || '';
+                        setUploadSuccess('✅ ' + message, rowsImported);
+                        showToast('✅ ' + message + (rowsImported ? ' (' + rowsImported + ' rows)' : ''), 'success');
+                    } else {
+                        const errorMsg = result?.error || result?.message || 'Unknown error';
+                        setUploadFailure('❌ Upload failed: ' + errorMsg);
+                        showToast('❌ Upload failed: ' + errorMsg, 'error');
+                    }
 
-            if (result && result.success !== false) {
-                const message = result.message || 'Upload successful';
-                const rowsImported = result.rowsImported || result.rows || '';
-                setUploadSuccess('✅ ' + message, rowsImported);
-                showToast('✅ ' + message + (rowsImported ? ' (' + rowsImported + ' rows)' : ''), 'success');
-            } else {
-                const errorMsg = result?.error || result?.message || 'Unknown error';
-                setUploadFailure('❌ Upload failed: ' + errorMsg);
-                showToast('❌ Upload failed: ' + errorMsg, 'error');
-            }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    setUploadFailure('❌ Upload failed: ' + error.message);
+                    showToast('❌ Upload failed: ' + error.message, 'error');
+                } finally {
+                    isUploading = false;
+                    if (confirmBtn) confirmBtn.disabled = false;
+                }
+            };
+
+            reader.onerror = function(e) {
+                console.error('FileReader error:', e);
+                setUploadFailure('❌ Failed to read file');
+                showToast('❌ Failed to read file', 'error');
+                isUploading = false;
+                if (confirmBtn) confirmBtn.disabled = false;
+            };
+
+            // Start reading the file - EXACTLY like testindex.html
+            reader.readAsDataURL(file);
 
         } catch (error) {
             console.error('Upload error:', error);
             setUploadFailure('❌ Upload failed: ' + error.message);
             showToast('❌ Upload failed: ' + error.message, 'error');
-        } finally {
             isUploading = false;
             if (confirmBtn) confirmBtn.disabled = false;
         }
-    }
-
-    // Helper: Read file as base64 (matches testindex.html)
-    function readFileAsBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                // Extract base64 data (remove data URL prefix)
-                const base64 = e.target.result.split(',')[1];
-                resolve(base64);
-            };
-            reader.onerror = function(e) {
-                reject(new Error('Failed to read file: ' + e.target.error));
-            };
-            reader.readAsDataURL(file);
-        });
     }
 
     // ---------- UPLOAD MODAL ----------
