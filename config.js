@@ -1,10 +1,9 @@
-/* ============================================
-   ACCOUNTS WORKSPACE - CONFIGURATION
-   ============================================ */
-
 window.APP_CONFIG = {
-  // Make sure this matches your deployed Google Apps Script URL
+  // Main API URL
   API_URL: 'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec',
+  
+  // Upload Service URL (separate Web App)
+  UPLOAD_URL: 'https://script.google.com/macros/s/AKfycby4-HEOB2dRbxoL9lwMr4idxIGzstLMJKQamZ7E6MHWjhIgxckEyBM6YNhKYRr2s3pC2g/exec',
   
   // Google Sheet IDs
   SHEETS: {
@@ -12,7 +11,7 @@ window.APP_CONFIG = {
     INVENTORY: '1tgE_a9Bv5uuBSDcRYqtfifxHTAXhTILxHDI22z4C1TA',
     ASSETS: '1PnGJmfxZjdDxGhC7ddJE4dh3jhzdIz7Vo9UuzweptfU',
     INVESTMENTS: '1JxY5-A2A4xOKIF2NnB9n9yqTYO34Q7oP1N3D9wHfbkw',
-    TRIAL_BALANCE: '1TNwNLs39i64GiW247fvB5-XHCs4uuGoz13DDkhmoe2k'
+    TRIAL_BALANCE: '1STj-5KHoNgt0BRLJlF_FnWlHvrZmrtHGKQ6x5Cm_-7I'
   },
   
   VOUCHER_PREFIXES: {
