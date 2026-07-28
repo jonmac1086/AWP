@@ -258,7 +258,7 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - Using FormData POST (same as testindex.html)
+    // UPLOAD FUNCTION - Using FormData POST (matches testindex.html)
     // ============================================
     async function uploadToTrialBalance(weekEnding, file) {
         // Prevent duplicate uploads
@@ -274,12 +274,12 @@
         try {
             setUploadProgress('Reading file...');
 
-            // Read file as base64 using FileReader (matches testindex.html approach)
+            // Read file as base64 using FileReader (matches testindex.html)
             const base64Data = await readFileAsBase64(file);
             
             setUploadProgress('Uploading to Trial Balance sheet...');
 
-            // Create FormData - same as testindex.html
+            // Create FormData - matches testindex.html exactly
             const formData = new FormData();
             formData.append('filename', file.name);
             formData.append('mimeType', file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -288,30 +288,46 @@
 
             // Get the API URL from config
             const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
-                'https://script.google.com/macros/s/AKfycbwQ4mCtuKJELlewrzaiZei11Y0nD2lkLvmmCA4XtUIvvRAqUYUu6-I0q79RVRWDjFyp/exec';
+                'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec';
 
             console.log('Uploading to:', apiUrl);
             console.log('Filename:', file.name);
             console.log('Week Ending:', weekEnding);
 
-            // Send POST request with FormData - same as testindex.html
+            // Send POST request with FormData - NO mode: 'no-cors' (matches testindex.html)
             const response = await fetch(apiUrl, {
                 method: 'POST',
-                body: formData,
-                mode: 'no-cors' // This prevents CORS errors but also prevents reading response
+                body: formData
+                // IMPORTANT: Do NOT use mode: 'no-cors' - we need to read the response
             });
 
-            // With no-cors, we can't read the response directly
-            // We need to use the iframe approach or JSONP for response
-            // But for now, we'll assume success and show a message
-            
-            console.log('Upload request sent successfully');
-            
-            // Since we can't read the response with no-cors, 
-            // we'll show a success message and the user can check the sheet
-            setUploadSuccess('File uploaded successfully! Check the Trial Balance sheet.', '');
-            
-            showToast('✅ File uploaded successfully!', 'success');
+            console.log('Response status:', response.status);
+
+            // Read response as text (matches testindex.html)
+            const text = await response.text();
+            console.log('Raw response:', text);
+
+            // Try to parse as JSON
+            let result;
+            try {
+                result = JSON.parse(text);
+            } catch (e) {
+                // If not JSON, use the text as the message
+                result = { success: false, error: 'Invalid response: ' + text.substring(0, 100) };
+            }
+
+            console.log('Parsed result:', result);
+
+            if (result && result.success !== false) {
+                const message = result.message || 'Upload successful';
+                const rowsImported = result.rowsImported || result.rows || '';
+                setUploadSuccess('✅ ' + message, rowsImported);
+                showToast('✅ ' + message + (rowsImported ? ' (' + rowsImported + ' rows)' : ''), 'success');
+            } else {
+                const errorMsg = result?.error || result?.message || 'Unknown error';
+                setUploadFailure('❌ Upload failed: ' + errorMsg);
+                showToast('❌ Upload failed: ' + errorMsg, 'error');
+            }
 
         } catch (error) {
             console.error('Upload error:', error);
@@ -319,6 +335,7 @@
             showToast('❌ Upload failed: ' + error.message, 'error');
         } finally {
             isUploading = false;
+            if (confirmBtn) confirmBtn.disabled = false;
         }
     }
 
