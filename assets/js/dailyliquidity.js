@@ -244,7 +244,7 @@
         isUploading = false;
         setTimeout(() => {
             closeUploadModal();
-        }, 1500);
+        }, 2000);
     }
 
     function setUploadFailure(message) {
@@ -258,9 +258,9 @@
     }
 
     // ============================================
-    // UPLOAD FUNCTION - EXACTLY like testindex.html
+    // UPLOAD FUNCTION - Using no-cors mode (like testindex.html)
     // ============================================
-    async function uploadToTrialBalance(weekEnding, file) {
+    function uploadToTrialBalance(weekEnding, file) {
         if (isUploading) {
             console.log('Upload already in progress');
             return;
@@ -275,40 +275,53 @@
 
             const reader = new FileReader();
             
-            reader.onload = async function(e) {
+            reader.onload = function(e) {
                 try {
                     setUploadProgress('Uploading to Trial Balance sheet...');
 
-                    const form = new FormData();
-                    form.append("filename", file.name);
-                    form.append("mimeType", file.type);
-                    form.append("data", e.target.result.split(",")[1]);
-                    form.append("weekEnding", weekEnding);
+                    // Create FormData - matches testindex.html
+                    const formData = new FormData();
+                    formData.append("filename", file.name);
+                    formData.append("mimeType", file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                    formData.append("data", e.target.result.split(",")[1]);
+                    formData.append("weekEnding", weekEnding);
 
+                    // Get the API URL
                     const apiUrl = window.APP_CONFIG ? window.APP_CONFIG.API_URL : 
                         'https://script.google.com/macros/s/AKfycbwhrAckDK-eLguLKM5WcV9HtUuE6D8I-Q2g-lckarcpSPfigqKsKAfVqIRMU1ppcBCkIQ/exec';
 
                     console.log('Uploading to:', apiUrl);
                     console.log('Filename:', file.name);
+                    console.log('Week Ending:', weekEnding);
 
-                    const response = await fetch(apiUrl, {
+                    // Send with no-cors mode (matches testindex.html)
+                    fetch(apiUrl, {
                         method: "POST",
-                        body: form,
-                        mode: 'no-cors'  // This is the key - like testindex.html
+                        body: formData,
+                        mode: 'no-cors'
+                    })
+                    .then(() => {
+                        // With no-cors, we can't read the response, but the request was sent
+                        console.log('Upload request sent successfully');
+                        
+                        // Show success message
+                        setUploadSuccess('✅ File uploaded successfully! Check the Trial Balance sheet.', '');
+                        showToast('✅ File uploaded successfully! Check the Trial Balance sheet.', 'success');
+                    })
+                    .catch((error) => {
+                        console.error('Upload error:', error);
+                        setUploadFailure('❌ Upload failed: ' + error.message);
+                        showToast('❌ Upload failed: ' + error.message, 'error');
+                    })
+                    .finally(() => {
+                        isUploading = false;
+                        if (confirmBtn) confirmBtn.disabled = false;
                     });
-
-                    // With no-cors, we can't read the response
-                    // But the upload still works!
-                    console.log('Upload request sent successfully');
-                    
-                    setUploadSuccess('✅ File uploaded successfully! Check the Trial Balance sheet.', '');
-                    showToast('✅ File uploaded successfully!', 'success');
 
                 } catch (error) {
                     console.error('Upload error:', error);
                     setUploadFailure('❌ Upload failed: ' + error.message);
                     showToast('❌ Upload failed: ' + error.message, 'error');
-                } finally {
                     isUploading = false;
                     if (confirmBtn) confirmBtn.disabled = false;
                 }
@@ -349,6 +362,7 @@
         const fileRemove = document.getElementById('uploadFileRemove');
         const statusDiv = document.getElementById('uploadStatus');
 
+        // Open modal
         if (uploadBtn) {
             uploadBtn.addEventListener('click', function() {
                 modal.style.display = 'flex';
@@ -506,6 +520,7 @@
         }
     };
 
+    // Expose for console/testing
     window.uploadLiquidityData = uploadToTrialBalance;
     window.renderLiquidityTable = renderTable;
     window.closeUploadModal = function() {
